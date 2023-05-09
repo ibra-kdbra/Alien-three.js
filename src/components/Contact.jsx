@@ -82,10 +82,10 @@ const Contact = () => {
 
     emailjs
       .sendForm(
-        "service_c4gb1xi",
-        "template_qu7iy8e",
+        "service_id",
+        "template_id",
         ref.current,
-        "TyNkubhCSFeBWU1l9"
+        "public_key"
       )
       .then(
         (result) => {
