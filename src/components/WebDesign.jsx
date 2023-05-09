@@ -35,8 +35,8 @@ const WebDesign = () => {
         </Suspense>
       </Canvas>
       <Desc>
-        We design products with a strong focus on both world class design and
-        ensuring your product is a market success.
+        I design products with any possible framework and any set of tools that 
+        I find the best to support the project
       </Desc>
     </>
   );
