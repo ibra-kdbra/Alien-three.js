@@ -1,6 +1,6 @@
-import React from 'react'
-import Navbar from './Navbar'
-import { styled } from 'styled-components';
+import { useRef } from "react";
+import styled from "styled-components";
+import Navbar from "./Navbar";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, Sphere, MeshDistortMaterial } from "@react-three/drei";
 
@@ -46,7 +46,7 @@ const Left = styled.div`
 `;
 
 const Title = styled.h1`
-  font-size: 74px;
+  font-size: 65px;
 
   @media only screen and (max-width: 768px) {
     text-align: center;
@@ -120,11 +120,10 @@ const Img = styled.img`
   }
 `;
 
-
 const Hero = () => {
   return (
     <Section>
-      <Navbar />
+      <Navbar/>
       <Container>
         <Left>
           <Title>Think. Make. Solve.</Title>
@@ -139,19 +138,18 @@ const Hero = () => {
         </Left>
         <Right>
           <Canvas>
-  
+          
               <OrbitControls enableZoom={false} />
               <ambientLight intensity={1} />
               <directionalLight position={[3, 2, 1]} />
-              <Sphere args={[1, 200, 300]} scale={2.8}>
+              <Sphere args={[1, 100, 200]} scale={2.4}>
                 <MeshDistortMaterial
-                  color="#000422"
+                  color="#070409"
                   attach="material"
                   distort={0.5}
                   speed={2}
                 />
               </Sphere>
-            
           </Canvas>
           <Img src="./img/moon.png" />
         </Right>

@@ -14,7 +14,7 @@ const Section = styled.div`
 const Container = styled.div`
   height: 100vh;
   scroll-snap-align: center;
-  width: 1400px;
+  width: 1200px;
   display: flex;
   justify-content: space-between;
 `;
@@ -99,7 +99,8 @@ const Who = () => {
             <Subtitle>Who I Am</Subtitle>
           </WhatWeDo>
           <Desc>
-            Web Appilcation Engineer with passion to make the best possible designs
+            A creative web application engineer with a passion for
+            making most useful cases out there.
           </Desc>
           <Button>See our works</Button>
         </Right>
