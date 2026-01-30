@@ -197,14 +197,10 @@ export class PlayerController {
         // For simplicity, just add force if velocity along normal is low
         const velDotUp = this.body.velocity.dot(up)
         if (Math.abs(velDotUp) < 0.1) {
-            const jumpForce = this.isAlien ? this.alienJump : this.humanJump
-            const force = up.scale(jumpForce * this.body.mass) // Impulse-ish
-            this.body.applyImpulse(force) // Cannon applyImpulse takes (impulse, point)
-            // Wait, applyImpulse signature in cannon-es?
-            // body.applyImpulse(vec, point)
-            this.body.velocity.x += up.x * (this.isAlien ? this.alienJump : this.humanJump)
-            this.body.velocity.y += up.y * (this.isAlien ? this.alienJump : this.humanJump)
-            this.body.velocity.z += up.z * (this.isAlien ? this.alienJump : this.humanJump)
+            const jumpStrength = this.isAlien ? this.alienJump : this.humanJump
+            this.body.velocity.x += up.x * jumpStrength
+            this.body.velocity.y += up.y * jumpStrength
+            this.body.velocity.z += up.z * jumpStrength
         }
     }
 
