@@ -1,0 +1,26 @@
+body {
+  margin: 0;
+  overflow: hidden;
+  background-color: #000;
+  font-family: 'Courier New', Courier, monospace; /* Sci-Fi Terminal feel */
+}
+
+#app {
+  width: 100vw;
+  height: 100vh;
+}
+
+#ui {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  pointer-events: none;
+  padding: 20px;
+  color: #00ff00; /* Retro Terminal Green */
+  text-shadow: 0 0 5px #00ff00;
+}
+
+b {
+  color: #fff;
+}
