@@ -133,13 +133,34 @@ function animate() {
   }
 
   // UI Update
-  const uiText = document.getElementById('instructions')!
-  uiText.innerHTML = `
-    <b>Controls:</b> WASD to Move, Space to Jump, Q to Disguise, E to Vehicle, V to Camera<br>
-    <b>Mode:</b> ${player.isAlien ? '<span style="color:#0f0">ALIEN</span>' : '<span style="color:#fa0">HUMAN</span>'}<br>
-    <b>Status:</b> ${player.currentVehicle ? 'Driving' : 'Walking'}
-  `
+  const uiText = document.getElementById('instructions') as HTMLElement
+  uiText.textContent = ''
 
+  // Controls line (static content)
+  const controlsLine = document.createElement('div')
+  controlsLine.innerHTML = '<b>Controls:</b> WASD to Move, Space to Jump, Q to Disguise, E to Vehicle, V to Camera'
+  uiText.appendChild(controlsLine)
+
+  // Mode line (dynamic styled text using textContent)
+  const modeLine = document.createElement('div')
+  const modeLabel = document.createElement('b')
+  modeLabel.textContent = 'Mode:'
+  modeLine.appendChild(modeLabel)
+  modeLine.appendChild(document.createTextNode(' '))
+  const modeSpan = document.createElement('span')
+  modeSpan.style.color = player.isAlien ? '#0f0' : '#fa0'
+  modeSpan.textContent = player.isAlien ? 'ALIEN' : 'HUMAN'
+  modeLine.appendChild(modeSpan)
+  uiText.appendChild(modeLine)
+
+  // Status line (dynamic text using textContent)
+  const statusLine = document.createElement('div')
+  const statusLabel = document.createElement('b')
+  statusLabel.textContent = 'Status:'
+  statusLine.appendChild(statusLabel)
+  statusLine.appendChild(document.createTextNode(' '))
+  statusLine.appendChild(document.createTextNode(player.currentVehicle ? 'Driving' : 'Walking'))
+  uiText.appendChild(statusLine)
   composer.render()
 }
 animate()
