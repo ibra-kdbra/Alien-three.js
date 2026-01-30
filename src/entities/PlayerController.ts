@@ -205,7 +205,11 @@ export class PlayerController {
     }
 
     // 3. Sync Visuals
-    this.mesh.position.copy(this.body.position as any)
+    this.mesh.position.set(
+      this.body.position.x,
+      this.body.position.y,
+      this.body.position.z
+    )
 
     // Rotate Character to face movement
     if (moveDir.lengthSq() > 0.1) {
