@@ -51,7 +51,9 @@ export class PhysicsWorld {
   }
 
   step(dt: number) {
-    this.world.step(dt)
+    const fixedTimeStep = 1 / 60
+    const maxSubSteps = 3
+    this.world.step(fixedTimeStep, dt, maxSubSteps)
   }
 }
 
