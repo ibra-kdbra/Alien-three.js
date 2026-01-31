@@ -4,20 +4,20 @@ import { InputManager } from '../core/InputManager'
 import { PhysicsWorld } from '../core/PhysicsWorld'
 import { ModelLoader } from '../utils/ModelLoader'
 import { Vehicle } from './Vehicle'
+import { OrbitCamera } from '../core/OrbitCamera'
 
 export class PlayerController {
   mesh: THREE.Group
   visuals: THREE.Group
   body: CANNON.Body
-  camera: THREE.Camera
+  camera: THREE.PerspectiveCamera
+  orbitCamera: OrbitCamera
   input: InputManager
   physicsWorld: PhysicsWorld
 
   // States
   isAlien: boolean = false
-  isFirstPerson: boolean = false
   wasDisguisePressed: boolean = false
-  wasViewPressed: boolean = false
   currentVehicle: Vehicle | null = null
   wasInteractPressed: boolean = false
 
@@ -29,26 +29,28 @@ export class PlayerController {
   // Constants
   readonly humanSpeed = 10
   readonly alienSpeed = 25
-  readonly humanJump = 5
-  readonly alienJump = 12
+  readonly humanJump = 8
+  readonly alienJump = 15
 
-  constructor(scene: THREE.Scene, world: PhysicsWorld, camera: THREE.Camera, input: InputManager) {
+  constructor(scene: THREE.Scene, world: PhysicsWorld, camera: THREE.PerspectiveCamera, input: InputManager) {
     this.physicsWorld = world
     this.camera = camera
     this.input = input
+    this.orbitCamera = new OrbitCamera(camera, input)
+
     this.mesh = new THREE.Group()
     scene.add(this.mesh)
 
     // Physics
     const radius = 0.5
     this.body = new CANNON.Body({
-      mass: 5,
+      mass: 60, // Human mass
       shape: new CANNON.Sphere(radius),
       fixedRotation: true,
       material: world.defaultMaterial
     })
-    this.body.position.set(0, 25, 0)
-    this.body.linearDamping = 0.0 // No air resistance, we control velocity
+    this.body.position.set(0, 505, 0) // Start slightly above planet
+    this.body.linearDamping = 0.9 // High damping for walking
     world.world.addBody(this.body)
 
     // Visuals Setup
@@ -65,11 +67,10 @@ export class PlayerController {
     // Flashlight
     this.flashlight = new THREE.SpotLight(0xffffff, 5, 50, Math.PI / 4, 0.5, 1)
     this.flashlight.position.set(0, 1, 0)
-    this.flashlight.target.position.set(0, 1, -5) // Points forward (-Z is forward for mesh)
+    this.flashlight.target.position.set(0, 1, -5)
     this.mesh.add(this.flashlight)
     this.mesh.add(this.flashlight.target)
 
-    // Load actual models if available
     this.loadModels()
   }
 
@@ -107,7 +108,6 @@ export class PlayerController {
     if (human) {
       this.visuals.remove(this.humanModel)
       this.humanModel = human
-      // Scale correction usually needed
       this.humanModel.scale.set(0.5, 0.5, 0.5)
       this.visuals.add(this.humanModel)
       this.updateVisualVisibility()
@@ -139,134 +139,117 @@ export class PlayerController {
       this.wasDisguisePressed = false
     }
 
-    // View Toggle
-    if (this.input.toggleView) {
-      if (!this.wasViewPressed) {
-        this.isFirstPerson = !this.isFirstPerson
-        this.wasViewPressed = true
-      }
-    } else {
-      this.wasViewPressed = false
-    }
-
     // Vehicle Mode
     if (this.currentVehicle) {
         this.currentVehicle.update(dt, this.input)
 
-        // Sync player position to vehicle
-        const seatOffset = new THREE.Vector3(0, 1, 0)
+        // Sync player position to vehicle visual
+        const seatOffset = new THREE.Vector3(0, 0.5, 0)
         seatOffset.applyQuaternion(this.currentVehicle.mesh.quaternion)
         const seatPos = this.currentVehicle.mesh.position.clone().add(seatOffset)
 
         this.mesh.position.copy(seatPos)
         this.mesh.quaternion.copy(this.currentVehicle.mesh.quaternion)
 
-        // Disable physics sync for player body (handled by drive())
+        // Update Camera
+        const vUp = new CANNON.Vec3(0, 1, 0)
+        this.currentVehicle.chassisBody.quaternion.vmult(vUp, vUp) // Vehicle Local Up
+        // Actually, for camera we prefer Planet Up usually, unless we want to roll with vehicle (nausea).
+        // Let's use Planet Up for stable camera.
+        const planetUp = this.physicsWorld.applyGravity(this.currentVehicle.chassisBody) || new CANNON.Vec3(0,1,0)
+        const planetUpVec = new THREE.Vector3(planetUp.x, planetUp.y, planetUp.z)
 
-        // Camera Follow Vehicle
-        const upVec = new THREE.Vector3(0, 1, 0).applyQuaternion(this.currentVehicle.mesh.quaternion)
-        this.updateCamera(upVec, this.currentVehicle.mesh.position)
+        this.orbitCamera.targetDistance = 12
+        this.orbitCamera.update(dt, this.currentVehicle.mesh.position, planetUpVec)
 
         return
     }
 
-    // 2. Movement
+    // 2. Character Movement
     const speed = this.isAlien ? this.alienSpeed : this.humanSpeed
 
-    // Gravity Logic
+    // Get Gravity Up
     const up = this.physicsWorld.applyGravity(this.body) || new CANNON.Vec3(0, 1, 0)
     const upVec = new THREE.Vector3(up.x, up.y, up.z)
 
-    // Camera Direction Project onto Surface
+    // Camera-relative movement
+    // Get Camera Forward project on Plane
     const camDir = new THREE.Vector3()
     this.camera.getWorldDirection(camDir)
+
+    // Project camDir onto plane defined by upVec
+    // v_proj = v - (v . n) * n
     const forward = camDir.clone().sub(upVec.clone().multiplyScalar(camDir.dot(upVec))).normalize()
     const right = new THREE.Vector3().crossVectors(forward, upVec).normalize()
 
-    // Input Vector
     const moveInput = new THREE.Vector3(0, 0, 0)
     if (this.input.forward) moveInput.add(forward)
     if (this.input.backward) moveInput.sub(forward)
     if (this.input.right) moveInput.add(right)
     if (this.input.left) moveInput.sub(right)
 
-    // Velocity Control
-    // Decompose velocity into Vertical (Gravity) and Horizontal (Movement)
-    const currentVel = new THREE.Vector3(this.body.velocity.x, this.body.velocity.y, this.body.velocity.z)
-    const vertVelVal = currentVel.dot(upVec)
-    const vertVel = upVec.clone().multiplyScalar(vertVelVal)
-    const horizVel = currentVel.clone().sub(vertVel)
+    if (moveInput.lengthSq() > 0) moveInput.normalize()
 
-    // Target Horizontal Velocity
-    let targetHorizVel = new THREE.Vector3(0,0,0)
-    if (moveInput.lengthSq() > 0) {
-        targetHorizVel = moveInput.normalize().multiplyScalar(speed)
-    }
+    // Apply Velocity
+    // We use "Instant" velocity change for responsiveness, but keep vertical velocity (gravity/jump)
+    const currentVel = this.body.velocity
+    const vVel = up.scale(currentVel.dot(up)) // Vertical component
 
-    // Smoothly interpolate horizontal velocity (Tight control)
-    horizVel.lerp(targetHorizVel, 0.2)
+    const targetVel = moveInput.clone().multiplyScalar(speed)
+    const hVel = new CANNON.Vec3(targetVel.x, targetVel.y, targetVel.z)
 
-    // Recombine
-    const newVel = horizVel.add(vertVel)
-    this.body.velocity.set(newVel.x, newVel.y, newVel.z)
+    const finalVel = vVel.vadd(hVel)
+    this.body.velocity.set(finalVel.x, finalVel.y, finalVel.z)
 
-    // Jump (Raycast Ground Check)
+    // Jump
     if (this.input.jump) {
-        const rayStart = new CANNON.Vec3(this.body.position.x, this.body.position.y, this.body.position.z)
-        const rayEnd = rayStart.vsub(up.scale(1.5)) // 1.5 units down
-        const rayResult = new CANNON.RaycastResult()
-        const hasGround = this.physicsWorld.world.raycastClosest(rayStart, rayEnd, {
+        // Raycast Check
+        const rayStart = this.body.position
+        const rayEnd = rayStart.vsub(up.scale(1.2)) // 0.5 radius + 0.7 margin
+        const result = new CANNON.RaycastResult()
+        const hit = this.physicsWorld.world.raycastClosest(rayStart, rayEnd, {
             skipBackfaces: true,
-            collisionFilterMask: 1, // Default group
             collisionFilterGroup: 1
-        }, rayResult)
+        }, result)
 
-        if (hasGround) {
-             const jumpForce = this.isAlien ? this.alienJump : this.humanJump
-             // Override vertical velocity for instant crisp jump
-             // Remove current vertical velocity first
-             this.body.velocity.vsub(new CANNON.Vec3(vertVel.x, vertVel.y, vertVel.z), this.body.velocity)
-             // Add jump
-             this.body.velocity.vadd(up.scale(jumpForce), this.body.velocity)
+        if (hit) {
+            const jumpForce = this.isAlien ? this.alienJump : this.humanJump
+            this.body.velocity.vadd(up.scale(jumpForce), this.body.velocity)
         }
     }
 
     // 3. Sync Visuals
     this.mesh.position.copy(this.body.position as any)
 
-    // Rotate Character to face movement
+    // Rotation: Face movement direction OR Camera direction?
+    // RPG style: Face movement direction.
     if (moveInput.lengthSq() > 0.1) {
-        // Easy way: Look at position + moveDir, then align up.
-        const lookPos = this.mesh.position.clone().add(moveInput)
-        this.mesh.lookAt(lookPos)
-        // Now correct the up vector? lookAt usually messes it up if up is not (0,1,0).
+        // Look at currentPos + moveInput
+        const lookTarget = this.mesh.position.clone().add(moveInput)
         this.mesh.up.copy(upVec)
-        this.mesh.lookAt(lookPos)
+        this.mesh.lookAt(lookTarget)
     } else {
-        // Just align to surface
+        // Align to up
         this.mesh.up.copy(upVec)
-        // Keep facing previous direction?
-        // this.mesh.lookAt(this.mesh.position.clone().add(this.mesh.getWorldDirection(new THREE.Vector3())))
     }
 
-    // 4. Update Camera Position
-    this.updateCamera(upVec, this.mesh.position)
+    // 4. Update Camera
+    this.orbitCamera.targetDistance = 6
+    this.orbitCamera.update(dt, this.mesh.position, upVec)
   }
 
   drive(vehicle: Vehicle) {
       this.currentVehicle = vehicle
       this.currentVehicle.isOccupied = true
-      // Disable player body
       this.physicsWorld.world.removeBody(this.body)
-      this.mesh.visible = true // Or false if inside closed car. True for hoverbike.
+      this.mesh.visible = true
   }
 
   dismount() {
       if (!this.currentVehicle) return
       this.currentVehicle.isOccupied = false
 
-      // Restore player body
-      const seatOffset = new THREE.Vector3(2, 0, 0) // Dismount to side
+      const seatOffset = new THREE.Vector3(3, 2, 0)
       seatOffset.applyQuaternion(this.currentVehicle.mesh.quaternion)
       const dismountPos = this.currentVehicle.mesh.position.clone().add(seatOffset)
 
@@ -275,52 +258,6 @@ export class PlayerController {
       this.physicsWorld.world.addBody(this.body)
 
       this.currentVehicle = null
-  }
-
-  updateCamera(upVec: THREE.Vector3, targetPos: THREE.Vector3) {
-    // Offset relative to player
-    const offsetDistance = this.isFirstPerson ? 0.5 : (this.currentVehicle ? 10 : 5)
-    const offsetHeight = this.isFirstPerson ? 0.5 : (this.currentVehicle ? 4 : 2)
-
-    // Standard "Behind" follow
-    const back = new THREE.Vector3(0, 0, 1) // Local back
-    // If in vehicle, use vehicle orientation. If player, use player mesh orientation
-    const orientation = this.currentVehicle ? this.currentVehicle.mesh.quaternion : this.mesh.quaternion
-    back.applyQuaternion(orientation).normalize() // Vector pointing behind
-
-    // But wait, mesh.lookAt logic flips Z?
-    // Usually +Z is out of screen (back), -Z is forward.
-    // Let's assume Forward is -Z. Back is +Z.
-
-    // Actually, in update() we did mesh.lookAt(lookPos).
-    // So Mesh Forward is -Z.
-
-    const camPos = targetPos.clone()
-        .add(upVec.clone().multiplyScalar(offsetHeight))
-        .add(back.multiplyScalar(offsetDistance))
-
-    this.camera.position.lerp(camPos, 0.1)
-
-    if (this.isFirstPerson && !this.currentVehicle) {
-        // First Person: Camera at head position, looking forward
-        const headPos = targetPos.clone().add(upVec.clone().multiplyScalar(0.8))
-        this.camera.position.lerp(headPos, 0.2)
-
-        // Look direction: The direction the mesh is facing
-        const forward = new THREE.Vector3(0, 0, -1)
-        forward.applyQuaternion(this.mesh.quaternion)
-        const lookTarget = headPos.clone().add(forward)
-
-        this.camera.lookAt(lookTarget)
-        this.camera.up.copy(upVec)
-
-        // Hide mesh in first person so we don't clip through face
-        this.visuals.visible = false
-    } else {
-        this.visuals.visible = true // Ensure visible in 3rd person
-        this.camera.lookAt(targetPos)
-        this.camera.up.copy(upVec)
-    }
   }
 
   toggleDisguise() {
