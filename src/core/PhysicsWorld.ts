@@ -3,13 +3,21 @@ import * as THREE from 'three'
 
 export class PhysicsWorld {
   world: CANNON.World
-  planets: CANNON.Body[] = [] // Using Cannon bodies to represent planet physics presence
+  planets: CANNON.Body[] = []
+  defaultMaterial: CANNON.Material
 
   constructor() {
     this.world = new CANNON.World()
     this.world.gravity.set(0, 0, 0) // Disable default gravity
     this.world.broadphase = new CANNON.SAPBroadphase(this.world)
-    // this.world.solver.iterations = 10
+
+    // Materials
+    this.defaultMaterial = new CANNON.Material('default')
+    const contactMat = new CANNON.ContactMaterial(this.defaultMaterial, this.defaultMaterial, {
+      friction: 0.0, // We handle movement friction manually
+      restitution: 0.0
+    })
+    this.world.addContactMaterial(contactMat)
   }
 
   addPlanet(planetBody: CANNON.Body) {

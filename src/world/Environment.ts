@@ -40,3 +40,16 @@ export function createTree(height: number = 10, color: number = 0x228B22): THREE
 
   return group
 }
+
+export function createRock(scale: number = 1): THREE.Mesh {
+  const geo = new THREE.DodecahedronGeometry(scale, 0)
+  const mat = new THREE.MeshStandardMaterial({
+      color: 0x888888,
+      roughness: 0.9,
+      flatShading: true
+  })
+  const rock = new THREE.Mesh(geo, mat)
+  rock.castShadow = true
+  rock.receiveShadow = true
+  return rock
+}
