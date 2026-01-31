@@ -71,17 +71,8 @@ export class Vehicle {
 
   update(dt: number, input?: InputManager) {
     // Sync visual
-    this.mesh.position.set(
-      this.chassisBody.position.x,
-      this.chassisBody.position.y,
-      this.chassisBody.position.z
-    )
-    this.mesh.quaternion.set(
-      this.chassisBody.quaternion.x,
-      this.chassisBody.quaternion.y,
-      this.chassisBody.quaternion.z,
-      this.chassisBody.quaternion.w
-    )
+    this.mesh.position.copy(this.chassisBody.position as any)
+    this.mesh.quaternion.copy(this.chassisBody.quaternion as any)
 
     // Gravity
     const up = this.world.applyGravity(this.chassisBody) || new CANNON.Vec3(0, 1, 0)

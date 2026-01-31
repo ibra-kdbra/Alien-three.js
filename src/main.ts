@@ -6,6 +6,7 @@ import { Planet } from './entities/Planet'
 import { PlayerController } from './entities/PlayerController'
 import { Vehicle } from './entities/Vehicle'
 import { createStarfield, createTree } from './world/Environment'
+import { createCrashSite } from './world/StoryElements'
 import * as CANNON from 'cannon-es'
 import { EffectComposer, RenderPass, UnrealBloomPass } from 'three-stdlib'
 
@@ -13,10 +14,10 @@ import { EffectComposer, RenderPass, UnrealBloomPass } from 'three-stdlib'
 const scene = new THREE.Scene()
 scene.background = new THREE.Color(0x050510)
 
-const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000)
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 20000)
 // Camera position will be handled by PlayerController
 
-const renderer = new THREE.WebGLRenderer({ antialias: true })
+const renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true })
 renderer.setSize(window.innerWidth, window.innerHeight)
 renderer.shadowMap.enabled = true
 renderer.shadowMap.type = THREE.PCFSoftShadowMap
@@ -28,19 +29,31 @@ const renderPass = new RenderPass(scene, camera)
 composer.addPass(renderPass)
 
 const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85)
-bloomPass.threshold = 0.2
-bloomPass.strength = 1.2
-bloomPass.radius = 0.5
+bloomPass.threshold = 0.1
+bloomPass.strength = 1.5
+bloomPass.radius = 0.8
 composer.addPass(bloomPass)
 
-// Lighting
-const ambientLight = new THREE.AmbientLight(0x404040, 0.5)
-scene.add(ambientLight)
+// Fog
+scene.fog = new THREE.FogExp2(0x050510, 0.0015)
 
-const sunLight = new THREE.PointLight(0xffffff, 2, 500)
-sunLight.position.set(50, 100, 50)
-sunLight.castShadow = true
-scene.add(sunLight)
+// Lighting
+const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6)
+hemiLight.position.set(0, 1000, 0)
+scene.add(hemiLight)
+
+const dirLight = new THREE.DirectionalLight(0xffdfba, 2.5)
+dirLight.position.set(1000, 2000, 500)
+dirLight.castShadow = true
+dirLight.shadow.camera.top = 1000
+dirLight.shadow.camera.bottom = -1000
+dirLight.shadow.camera.left = -1000
+dirLight.shadow.camera.right = 1000
+dirLight.shadow.camera.near = 0.1
+dirLight.shadow.camera.far = 5000
+dirLight.shadow.mapSize.width = 4096
+dirLight.shadow.mapSize.height = 4096
+scene.add(dirLight)
 
 // Systems
 const physicsWorld = new PhysicsWorld()
@@ -48,9 +61,10 @@ const inputManager = new InputManager()
 
 // Planets
 const planets: Planet[] = []
-const p1 = new Planet(20, 0x2E8B57, new THREE.Vector3(0, 0, 0))
-const p2 = new Planet(15, 0xCD5C5C, new THREE.Vector3(60, 20, 0))
-const p3 = new Planet(12, 0xADD8E6, new THREE.Vector3(-50, -10, 30))
+// Scale up: Radius 500
+const p1 = new Planet(500, 0x2E8B57, new THREE.Vector3(0, 0, 0)) // Home
+const p2 = new Planet(300, 0xCD5C5C, new THREE.Vector3(1200, 400, 0)) // Mars-like (Far away)
+const p3 = new Planet(200, 0xADD8E6, new THREE.Vector3(-1000, -200, 600)) // Ice
 planets.push(p1, p2, p3)
 
 planets.forEach(p => {
@@ -62,8 +76,12 @@ planets.forEach(p => {
 scene.add(createStarfield(3000))
 
 // Trees
-for (let i = 0; i < 20; i++) {
-  const tree = createTree()
+for (let i = 0; i < 500; i++) {
+  // Alien colors: Purple, Teal, or Orange
+  const colors = [0x8A2BE2, 0x00CED1, 0xFF4500]
+  const color = colors[Math.floor(Math.random() * colors.length)]
+  const tree = createTree(10 + Math.random() * 20, color)
+
   const u = Math.random()
   const v = Math.random()
   const theta = 2 * Math.PI * u
@@ -90,13 +108,16 @@ for (let i = 0; i < 20; i++) {
 
 // Player
 const player = new PlayerController(scene, physicsWorld, camera, inputManager)
-// Position player on P1 surface top
-player.body.position.set(0, 25, 0)
+// Position player on P1 surface top (Radius + Offset)
+player.body.position.set(0, 505, 0)
 
 // Vehicle
-const vehiclePos = new CANNON.Vec3(5, 25, 0) // Near player
+const vehiclePos = new CANNON.Vec3(10, 505, 0) // Near player
 const vehicle = new Vehicle(physicsWorld, vehiclePos)
 scene.add(vehicle.mesh)
+
+// Crash Site (Foreshadowing)
+createCrashSite(scene, p1, new THREE.Vector3(30, 500, 30))
 
 // Loop
 const clock = new THREE.Clock()
@@ -133,34 +154,18 @@ function animate() {
   }
 
   // UI Update
-  const uiText = document.getElementById('instructions') as HTMLElement
-  uiText.textContent = ''
+  const uiText = document.getElementById('instructions')!
+  uiText.innerHTML = `
+    <b>Controls:</b> WASD to Move, Space to Jump, Q to Disguise, E to Vehicle, V to Camera<br>
+    <b>Mode:</b> ${player.isAlien ? '<span style="color:#0f0">ALIEN</span>' : '<span style="color:#fa0">HUMAN</span>'}<br>
+    <b>Status:</b> ${player.currentVehicle ? 'Driving' : 'Walking'}<br>
+    <br>
+    <div style="border: 1px solid #0f0; padding: 10px; background: rgba(0, 20, 0, 0.8);">
+      <b>INCOMING TRANSMISSION...</b><br>
+      "Survivor... signal faint... ship destroyed... beware the natives..."
+    </div>
+  `
 
-  // Controls line (static content)
-  const controlsLine = document.createElement('div')
-  controlsLine.innerHTML = '<b>Controls:</b> WASD to Move, Space to Jump, Q to Disguise, E to Vehicle, V to Camera'
-  uiText.appendChild(controlsLine)
-
-  // Mode line (dynamic styled text using textContent)
-  const modeLine = document.createElement('div')
-  const modeLabel = document.createElement('b')
-  modeLabel.textContent = 'Mode:'
-  modeLine.appendChild(modeLabel)
-  modeLine.appendChild(document.createTextNode(' '))
-  const modeSpan = document.createElement('span')
-  modeSpan.style.color = player.isAlien ? '#0f0' : '#fa0'
-  modeSpan.textContent = player.isAlien ? 'ALIEN' : 'HUMAN'
-  modeLine.appendChild(modeSpan)
-  uiText.appendChild(modeLine)
-
-  // Status line (dynamic text using textContent)
-  const statusLine = document.createElement('div')
-  const statusLabel = document.createElement('b')
-  statusLabel.textContent = 'Status:'
-  statusLine.appendChild(statusLabel)
-  statusLine.appendChild(document.createTextNode(' '))
-  statusLine.appendChild(document.createTextNode(player.currentVehicle ? 'Driving' : 'Walking'))
-  uiText.appendChild(statusLine)
   composer.render()
 }
 animate()
