@@ -16,7 +16,6 @@ const scene = new THREE.Scene()
 scene.background = new THREE.Color(0x050510)
 
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 20000)
-// Camera position will be handled by PlayerController
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true })
 renderer.setSize(window.innerWidth, window.innerHeight)
@@ -36,7 +35,7 @@ bloomPass.radius = 0.8
 composer.addPass(bloomPass)
 
 // Fog
-scene.fog = new THREE.FogExp2(0x110520, 0.002) // Slightly purpler, denser
+scene.fog = new THREE.FogExp2(0x110520, 0.002)
 
 // Sun Flare
 const texLoader = new THREE.TextureLoader()
@@ -47,7 +46,7 @@ const spriteMaterial = new THREE.SpriteMaterial({
 });
 const sprite = new THREE.Sprite(spriteMaterial);
 sprite.scale.set(2000, 2000, 1)
-sprite.position.set(1000, 2000, 500) // Same as DirLight
+sprite.position.set(1000, 2000, 500)
 scene.add(sprite);
 
 // Lighting
@@ -74,13 +73,11 @@ const inputManager = new InputManager()
 
 // Planets
 const planets: Planet[] = []
-// Scale up: Radius 500
-const p1 = new Planet(500, 0x2E8B57, new THREE.Vector3(0, 0, 0)) // Home
-const p2 = new Planet(300, 0xCD5C5C, new THREE.Vector3(1200, 400, 0)) // Mars-like (Far away)
-const p3 = new Planet(200, 0xADD8E6, new THREE.Vector3(-1000, -200, 600)) // Ice
+const p1 = new Planet(500, 0x2E8B57, new THREE.Vector3(0, 0, 0))
+const p2 = new Planet(300, 0xCD5C5C, new THREE.Vector3(1200, 400, 0))
+const p3 = new Planet(200, 0xADD8E6, new THREE.Vector3(-1000, -200, 600))
 planets.push(p1, p2, p3)
 
-// Textures
 const tex1 = createNoiseTexture(0x2E8B57, 0x3E9B67); (p1.mesh.material as THREE.MeshStandardMaterial).map = tex1
 const tex2 = createNoiseTexture(0xCD5C5C, 0xDD6C6C); (p2.mesh.material as THREE.MeshStandardMaterial).map = tex2
 const tex3 = createNoiseTexture(0xADD8E6, 0xBDD8F6); (p3.mesh.material as THREE.MeshStandardMaterial).map = tex3
@@ -91,10 +88,9 @@ planets.forEach(p => {
   physicsWorld.addPlanet(p.body)
 })
 
-// Starfield
 scene.add(createStarfield(3000))
 
-// Trees & Rocks
+// Environment
 for (let i = 0; i < 800; i++) {
   const isTree = Math.random() > 0.3
   let obj: THREE.Object3D
@@ -131,7 +127,6 @@ for (let i = 0; i < 800; i++) {
     body.quaternion.set(q.x, q.y, q.z, q.w)
     physicsWorld.world.addBody(body)
   } else {
-    // Rock physics (simple box)
     const shape = new CANNON.Box(new CANNON.Vec3(1, 1, 1))
     const body = new CANNON.Body({ mass: 0 })
     body.addShape(shape)
@@ -143,16 +138,17 @@ for (let i = 0; i < 800; i++) {
 
 // Player
 const player = new PlayerController(scene, physicsWorld, camera, inputManager)
-// Position player on P1 surface top (Radius + Offset)
-player.body.position.set(0, 505, 0)
 
 // Vehicle
-const vehiclePos = new CANNON.Vec3(10, 505, 0) // Near player
+const vehiclePos = new CANNON.Vec3(10, 505, 0)
 const vehicle = new Vehicle(physicsWorld, vehiclePos)
 scene.add(vehicle.mesh)
 
-// Crash Site (Foreshadowing)
 createCrashSite(scene, p1, new THREE.Vector3(30, 500, 30))
+
+// UI Cache
+const uiMode = document.getElementById('mode-indicator')!
+const uiVehicle = document.getElementById('vehicle-indicator')!
 
 // Loop
 const clock = new THREE.Clock()
@@ -168,7 +164,7 @@ function animate() {
       if (player.currentVehicle) {
         player.dismount()
       } else {
-        if (player.mesh.position.distanceTo(vehicle.mesh.position) < 5) {
+        if (player.mesh.position.distanceTo(vehicle.mesh.position) < 8) {
           player.drive(vehicle)
         }
       }
@@ -178,30 +174,34 @@ function animate() {
     wasInteractPressed = false
   }
 
-  // Physics & Updates
   physicsWorld.step(dt)
-
   player.update(dt)
 
-  // Update vehicle if not driven (Player updates it when driven)
   if (!player.currentVehicle) {
     vehicle.update(dt)
   }
 
   // UI Update
-  const uiText = document.getElementById('instructions')!
-  uiText.innerHTML = `
-    <b>Controls:</b> WASD to Move, Space to Jump, Q to Disguise, E to Vehicle, V to Camera<br>
-    <b>Mode:</b> ${player.isAlien ? '<span style="color:#0f0">ALIEN</span>' : '<span style="color:#fa0">HUMAN</span>'}<br>
-    <b>Status:</b> ${player.currentVehicle ? 'Driving' : 'Walking'}<br>
-    <br>
-    <div style="border: 1px solid #0f0; padding: 10px; background: rgba(0, 20, 0, 0.8);">
-      <b>INCOMING TRANSMISSION...</b><br>
-      "Survivor... signal faint... ship destroyed... beware the natives..."
-    </div>
-  `
+  if (player.isAlien) {
+      if (uiMode.textContent !== 'ALIEN') {
+          uiMode.textContent = 'ALIEN'
+          uiMode.className = 'value alien'
+      }
+  } else {
+      if (uiMode.textContent !== 'HUMAN') {
+          uiMode.textContent = 'HUMAN'
+          uiMode.className = 'value human'
+      }
+  }
+
+  const vStatus = player.currentVehicle ? 'ACTIVE' : 'NONE'
+  if (uiVehicle.textContent !== vStatus) {
+      uiVehicle.textContent = vStatus
+  }
 
   composer.render()
+
+  inputManager.resetMouse()
 }
 animate()
 

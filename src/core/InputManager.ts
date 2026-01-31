@@ -1,5 +1,7 @@
 export class InputManager {
   keys: { [key: string]: boolean } = {}
+  mouseDelta: { x: number, y: number } = { x: 0, y: 0 }
+  isLocked: boolean = false
 
   constructor() {
     window.addEventListener('keydown', (e) => {
@@ -9,10 +11,34 @@ export class InputManager {
     window.addEventListener('keyup', (e) => {
       this.keys[e.code] = false
     })
+
+    document.addEventListener('mousemove', (e) => {
+      if (this.isLocked) {
+        this.mouseDelta.x += e.movementX
+        this.mouseDelta.y += e.movementY
+      }
+    })
+
+    document.addEventListener('pointerlockchange', () => {
+        this.isLocked = document.pointerLockElement === document.body
+    })
+
+    // Auto-lock on click (optional, can be handled by main game logic, but convenient here)
+    document.body.addEventListener('click', () => {
+        if (!this.isLocked) {
+            document.body.requestPointerLock()
+        }
+    })
   }
 
   isKeyDown(code: string): boolean {
     return !!this.keys[code]
+  }
+
+  // Must be called at end of frame
+  resetMouse() {
+      this.mouseDelta.x = 0
+      this.mouseDelta.y = 0
   }
 
   // Helper for common keys

@@ -8,10 +8,45 @@
   </head>
   <body>
     <div id="app"></div>
-    <div id="ui" style="position: absolute; top: 0; left: 0; width: 100%; pointer-events: none; padding: 20px; color: white; font-family: sans-serif; text-shadow: 1px 1px 2px black;">
-      <h1>Alien Physics Demo</h1>
-      <p id="instructions">Loading...</p>
+
+    <div id="hud">
+      <div id="crosshair"></div>
+
+      <div class="panel top-left">
+        <h2>ALIEN INFILTRATOR</h2>
+        <div class="subtext">PHYSICS SIMULATION v1.0</div>
+      </div>
+
+      <div class="panel top-right">
+        <div id="transmission-log">
+          <div class="msg">SYSTEM ONLINE...</div>
+          <div class="msg">PLANET GRAVITY: 1.0G</div>
+        </div>
+      </div>
+
+      <div class="panel bottom-left">
+        <div class="stat-row">
+          <span class="label">MORPHOLOGY:</span>
+          <span id="mode-indicator" class="value human">HUMAN</span>
+        </div>
+        <div class="stat-row">
+          <span class="label">VEHICLE:</span>
+          <span id="vehicle-indicator" class="value">NONE</span>
+        </div>
+      </div>
+
+      <div class="panel bottom-right">
+        <div id="controls-hint">
+          <div class="key-row"><span class="key">WASD</span> MOVE</div>
+          <div class="key-row"><span class="key">SPACE</span> JUMP</div>
+          <div class="key-row"><span class="key">Q</span> DISGUISE</div>
+          <div class="key-row"><span class="key">E</span> INTERACT</div>
+          <div class="key-row"><span class="key">MOUSE</span> CAMERA</div>
+          <div class="key-row"><span class="key">CLICK</span> LOCK CURSOR</div>
+        </div>
+      </div>
     </div>
+
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
