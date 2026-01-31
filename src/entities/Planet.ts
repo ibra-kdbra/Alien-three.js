@@ -10,11 +10,11 @@ export class Planet {
     this.radius = radius
 
     // Visuals
-    const geometry = new THREE.SphereGeometry(radius, 64, 64)
+    const geometry = new THREE.SphereGeometry(radius, 128, 128)
     const material = new THREE.MeshStandardMaterial({
       color: color,
-      roughness: 0.8,
-      metalness: 0.2
+      roughness: 0.9,
+      metalness: 0.1
     })
     this.mesh = new THREE.Mesh(geometry, material)
     this.mesh.position.copy(position)
@@ -25,5 +25,7 @@ export class Planet {
     this.body = new CANNON.Body({ mass: 0 }) // Static
     this.body.addShape(new CANNON.Sphere(radius))
     this.body.position.set(position.x, position.y, position.z)
+    // We need to assign material in main? Or pass world here?
+    // We'll assign it externally for now.
   }
 }

@@ -5,8 +5,9 @@ import { InputManager } from './core/InputManager'
 import { Planet } from './entities/Planet'
 import { PlayerController } from './entities/PlayerController'
 import { Vehicle } from './entities/Vehicle'
-import { createStarfield, createTree } from './world/Environment'
+import { createStarfield, createTree, createRock } from './world/Environment'
 import { createCrashSite } from './world/StoryElements'
+import { createNoiseTexture } from './utils/TextureGenerator'
 import * as CANNON from 'cannon-es'
 import { EffectComposer, RenderPass, UnrealBloomPass } from 'three-stdlib'
 
@@ -35,7 +36,19 @@ bloomPass.radius = 0.8
 composer.addPass(bloomPass)
 
 // Fog
-scene.fog = new THREE.FogExp2(0x050510, 0.0015)
+scene.fog = new THREE.FogExp2(0x110520, 0.002) // Slightly purpler, denser
+
+// Sun Flare
+const texLoader = new THREE.TextureLoader()
+const spriteMaterial = new THREE.SpriteMaterial({
+    map: texLoader.load('https://threejs.org/examples/textures/lensflare/lensflare0.png'),
+    color: 0xffaa00,
+    blending: THREE.AdditiveBlending
+});
+const sprite = new THREE.Sprite(spriteMaterial);
+sprite.scale.set(2000, 2000, 1)
+sprite.position.set(1000, 2000, 500) // Same as DirLight
+scene.add(sprite);
 
 // Lighting
 const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6)
@@ -67,20 +80,32 @@ const p2 = new Planet(300, 0xCD5C5C, new THREE.Vector3(1200, 400, 0)) // Mars-li
 const p3 = new Planet(200, 0xADD8E6, new THREE.Vector3(-1000, -200, 600)) // Ice
 planets.push(p1, p2, p3)
 
+// Textures
+const tex1 = createNoiseTexture(0x2E8B57, 0x3E9B67); (p1.mesh.material as THREE.MeshStandardMaterial).map = tex1
+const tex2 = createNoiseTexture(0xCD5C5C, 0xDD6C6C); (p2.mesh.material as THREE.MeshStandardMaterial).map = tex2
+const tex3 = createNoiseTexture(0xADD8E6, 0xBDD8F6); (p3.mesh.material as THREE.MeshStandardMaterial).map = tex3
+
 planets.forEach(p => {
   scene.add(p.mesh)
+  p.body.material = physicsWorld.defaultMaterial
   physicsWorld.addPlanet(p.body)
 })
 
 // Starfield
 scene.add(createStarfield(3000))
 
-// Trees
-for (let i = 0; i < 500; i++) {
-  // Alien colors: Purple, Teal, or Orange
-  const colors = [0x8A2BE2, 0x00CED1, 0xFF4500]
-  const color = colors[Math.floor(Math.random() * colors.length)]
-  const tree = createTree(10 + Math.random() * 20, color)
+// Trees & Rocks
+for (let i = 0; i < 800; i++) {
+  const isTree = Math.random() > 0.3
+  let obj: THREE.Object3D
+
+  if (isTree) {
+      const colors = [0x8A2BE2, 0x00CED1, 0xFF4500]
+      const color = colors[Math.floor(Math.random() * colors.length)]
+      obj = createTree(10 + Math.random() * 20, color)
+  } else {
+      obj = createRock(2 + Math.random() * 5)
+  }
 
   const u = Math.random()
   const v = Math.random()
@@ -90,20 +115,30 @@ for (let i = 0; i < 500; i++) {
   const y = p1.radius * Math.sin(phi) * Math.sin(theta)
   const z = p1.radius * Math.cos(phi)
   const pos = new THREE.Vector3(x, y, z).add(p1.mesh.position)
-  tree.position.copy(pos)
+  obj.position.copy(pos)
 
   const up = pos.clone().sub(p1.mesh.position).normalize()
   const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), up)
-  tree.quaternion.copy(q)
-  scene.add(tree)
+  obj.quaternion.copy(q)
+  scene.add(obj)
 
-  // Tree Physics
-  const shape = new CANNON.Box(new CANNON.Vec3(0.5, 2, 0.5))
-  const body = new CANNON.Body({ mass: 0 })
-  body.addShape(shape, new CANNON.Vec3(0, 2, 0))
-  body.position.set(pos.x, pos.y, pos.z)
-  body.quaternion.set(q.x, q.y, q.z, q.w)
-  physicsWorld.world.addBody(body)
+  // Physics
+  if (isTree) {
+    const shape = new CANNON.Box(new CANNON.Vec3(0.5, 2, 0.5))
+    const body = new CANNON.Body({ mass: 0 })
+    body.addShape(shape, new CANNON.Vec3(0, 2, 0))
+    body.position.set(pos.x, pos.y, pos.z)
+    body.quaternion.set(q.x, q.y, q.z, q.w)
+    physicsWorld.world.addBody(body)
+  } else {
+    // Rock physics (simple box)
+    const shape = new CANNON.Box(new CANNON.Vec3(1, 1, 1))
+    const body = new CANNON.Body({ mass: 0 })
+    body.addShape(shape)
+    body.position.set(pos.x, pos.y, pos.z)
+    body.quaternion.set(q.x, q.y, q.z, q.w)
+    physicsWorld.world.addBody(body)
+  }
 }
 
 // Player

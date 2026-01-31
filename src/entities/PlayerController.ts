@@ -44,10 +44,11 @@ export class PlayerController {
     this.body = new CANNON.Body({
       mass: 5,
       shape: new CANNON.Sphere(radius),
-      fixedRotation: true // We handle rotation manually
+      fixedRotation: true,
+      material: world.defaultMaterial
     })
     this.body.position.set(0, 25, 0)
-    this.body.linearDamping = 0.9 // Friction-ish
+    this.body.linearDamping = 0.0 // No air resistance, we control velocity
     world.world.addBody(this.body)
 
     // Visuals Setup
@@ -172,47 +173,61 @@ export class PlayerController {
     // 2. Movement
     const speed = this.isAlien ? this.alienSpeed : this.humanSpeed
 
-    // Get camera forward direction but projected onto the planet surface
-    // First, we need the "Up" vector (surface normal)
-    // We can get it from the physics world gravity calculation or calculate it again.
-    // For now, let's approximate by position relative to closest planet.
-    // Actually, PhysicsWorld.applyGravity returns the up vector!
-
+    // Gravity Logic
     const up = this.physicsWorld.applyGravity(this.body) || new CANNON.Vec3(0, 1, 0)
     const upVec = new THREE.Vector3(up.x, up.y, up.z)
 
-    // Camera Direction
+    // Camera Direction Project onto Surface
     const camDir = new THREE.Vector3()
     this.camera.getWorldDirection(camDir)
-
-    // Project camDir onto tangent plane
-    // forward = camDir - (camDir . up) * up
     const forward = camDir.clone().sub(upVec.clone().multiplyScalar(camDir.dot(upVec))).normalize()
     const right = new THREE.Vector3().crossVectors(forward, upVec).normalize()
 
-    const moveDir = new THREE.Vector3(0, 0, 0)
-    if (this.input.forward) moveDir.add(forward)
-    if (this.input.backward) moveDir.sub(forward)
-    if (this.input.right) moveDir.add(right)
-    if (this.input.left) moveDir.sub(right)
+    // Input Vector
+    const moveInput = new THREE.Vector3(0, 0, 0)
+    if (this.input.forward) moveInput.add(forward)
+    if (this.input.backward) moveInput.sub(forward)
+    if (this.input.right) moveInput.add(right)
+    if (this.input.left) moveInput.sub(right)
 
-    if (moveDir.lengthSq() > 0) {
-      moveDir.normalize().multiplyScalar(speed)
-      this.body.velocity.x += moveDir.x * dt * 5 // Acceleration
-      this.body.velocity.y += moveDir.y * dt * 5
-      this.body.velocity.z += moveDir.z * dt * 5
+    // Velocity Control
+    // Decompose velocity into Vertical (Gravity) and Horizontal (Movement)
+    const currentVel = new THREE.Vector3(this.body.velocity.x, this.body.velocity.y, this.body.velocity.z)
+    const vertVelVal = currentVel.dot(upVec)
+    const vertVel = upVec.clone().multiplyScalar(vertVelVal)
+    const horizVel = currentVel.clone().sub(vertVel)
+
+    // Target Horizontal Velocity
+    let targetHorizVel = new THREE.Vector3(0,0,0)
+    if (moveInput.lengthSq() > 0) {
+        targetHorizVel = moveInput.normalize().multiplyScalar(speed)
     }
 
-    // Jump
+    // Smoothly interpolate horizontal velocity (Tight control)
+    horizVel.lerp(targetHorizVel, 0.2)
+
+    // Recombine
+    const newVel = horizVel.add(vertVel)
+    this.body.velocity.set(newVel.x, newVel.y, newVel.z)
+
+    // Jump (Raycast Ground Check)
     if (this.input.jump) {
-        // Check if grounded (simple raycast or just proximity)
-        // For simplicity, just add force if velocity along normal is low
-        const velDotUp = this.body.velocity.dot(up)
-        if (Math.abs(velDotUp) < 0.1) {
-            const jumpForce = this.isAlien ? this.alienJump : this.humanJump
-            const impulse = up.scale(jumpForce * this.body.mass)
-            // applyImpulse(impulse, worldPoint)
-            this.body.applyImpulse(impulse, this.body.position)
+        const rayStart = new CANNON.Vec3(this.body.position.x, this.body.position.y, this.body.position.z)
+        const rayEnd = rayStart.vsub(up.scale(1.5)) // 1.5 units down
+        const rayResult = new CANNON.RaycastResult()
+        const hasGround = this.physicsWorld.world.raycastClosest(rayStart, rayEnd, {
+            skipBackfaces: true,
+            collisionFilterMask: 1, // Default group
+            collisionFilterGroup: 1
+        }, rayResult)
+
+        if (hasGround) {
+             const jumpForce = this.isAlien ? this.alienJump : this.humanJump
+             // Override vertical velocity for instant crisp jump
+             // Remove current vertical velocity first
+             this.body.velocity.vsub(new CANNON.Vec3(vertVel.x, vertVel.y, vertVel.z), this.body.velocity)
+             // Add jump
+             this.body.velocity.vadd(up.scale(jumpForce), this.body.velocity)
         }
     }
 
@@ -220,9 +235,9 @@ export class PlayerController {
     this.mesh.position.copy(this.body.position as any)
 
     // Rotate Character to face movement
-    if (moveDir.lengthSq() > 0.1) {
+    if (moveInput.lengthSq() > 0.1) {
         // Easy way: Look at position + moveDir, then align up.
-        const lookPos = this.mesh.position.clone().add(moveDir)
+        const lookPos = this.mesh.position.clone().add(moveInput)
         this.mesh.lookAt(lookPos)
         // Now correct the up vector? lookAt usually messes it up if up is not (0,1,0).
         this.mesh.up.copy(upVec)
