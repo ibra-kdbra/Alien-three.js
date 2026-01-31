@@ -7,6 +7,7 @@ import { Vehicle } from './Vehicle'
 
 export class PlayerController {
   mesh: THREE.Group
+  visuals: THREE.Group
   body: CANNON.Body
   camera: THREE.Camera
   input: InputManager
@@ -23,6 +24,7 @@ export class PlayerController {
   // Models
   humanModel: THREE.Object3D
   alienModel: THREE.Object3D
+  flashlight: THREE.SpotLight
 
   // Constants
   readonly humanSpeed = 10
@@ -49,12 +51,22 @@ export class PlayerController {
     world.world.addBody(this.body)
 
     // Visuals Setup
+    this.visuals = new THREE.Group()
+    this.mesh.add(this.visuals)
+
     this.humanModel = this.createHumanPlaceholder()
     this.alienModel = this.createAlienPlaceholder()
 
-    this.mesh.add(this.humanModel)
-    this.mesh.add(this.alienModel)
+    this.visuals.add(this.humanModel)
+    this.visuals.add(this.alienModel)
     this.alienModel.visible = false
+
+    // Flashlight
+    this.flashlight = new THREE.SpotLight(0xffffff, 5, 50, Math.PI / 4, 0.5, 1)
+    this.flashlight.position.set(0, 1, 0)
+    this.flashlight.target.position.set(0, 1, -5) // Points forward (-Z is forward for mesh)
+    this.mesh.add(this.flashlight)
+    this.mesh.add(this.flashlight.target)
 
     // Load actual models if available
     this.loadModels()
@@ -92,20 +104,20 @@ export class PlayerController {
 
     const human = await loader.load('/models/human.glb')
     if (human) {
-      this.mesh.remove(this.humanModel)
+      this.visuals.remove(this.humanModel)
       this.humanModel = human
       // Scale correction usually needed
       this.humanModel.scale.set(0.5, 0.5, 0.5)
-      this.mesh.add(this.humanModel)
+      this.visuals.add(this.humanModel)
       this.updateVisualVisibility()
     }
 
     const alien = await loader.load('/models/alien.glb')
     if (alien) {
-      this.mesh.remove(this.alienModel)
+      this.visuals.remove(this.alienModel)
       this.alienModel = alien
       this.alienModel.scale.set(0.5, 0.5, 0.5)
-      this.mesh.add(this.alienModel)
+      this.visuals.add(this.alienModel)
       this.updateVisualVisibility()
     }
   }
@@ -197,19 +209,15 @@ export class PlayerController {
         // For simplicity, just add force if velocity along normal is low
         const velDotUp = this.body.velocity.dot(up)
         if (Math.abs(velDotUp) < 0.1) {
-            const jumpStrength = this.isAlien ? this.alienJump : this.humanJump
-            this.body.velocity.x += up.x * jumpStrength
-            this.body.velocity.y += up.y * jumpStrength
-            this.body.velocity.z += up.z * jumpStrength
+            const jumpForce = this.isAlien ? this.alienJump : this.humanJump
+            const impulse = up.scale(jumpForce * this.body.mass)
+            // applyImpulse(impulse, worldPoint)
+            this.body.applyImpulse(impulse, this.body.position)
         }
     }
 
     // 3. Sync Visuals
-    this.mesh.position.set(
-      this.body.position.x,
-      this.body.position.y,
-      this.body.position.z
-    )
+    this.mesh.position.copy(this.body.position as any)
 
     // Rotate Character to face movement
     if (moveDir.lengthSq() > 0.1) {
@@ -292,9 +300,9 @@ export class PlayerController {
         this.camera.up.copy(upVec)
 
         // Hide mesh in first person so we don't clip through face
-        this.mesh.visible = false
+        this.visuals.visible = false
     } else {
-        this.mesh.visible = true // Ensure visible in 3rd person
+        this.visuals.visible = true // Ensure visible in 3rd person
         this.camera.lookAt(targetPos)
         this.camera.up.copy(upVec)
     }
