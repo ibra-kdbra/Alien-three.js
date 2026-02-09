@@ -1,32 +1,45 @@
 import * as THREE from 'three'
 
-export function createNoiseTexture(colorA: number, colorB: number): THREE.Texture {
-  const size = 512
-  const canvas = document.createElement('canvas')
-  canvas.width = size
-  canvas.height = size
-  const ctx = canvas.getContext('2d')!
+export function createPlanetTexture(color1: number, color2: number): THREE.CanvasTexture {
+    const size = 1024
+    const canvas = document.createElement('canvas')
+    canvas.width = size
+    canvas.height = size
+    const ctx = canvas.getContext('2d')!
 
-  // Fill background
-  ctx.fillStyle = `#${new THREE.Color(colorA).getHexString()}`
-  ctx.fillRect(0, 0, size, size)
+    // Base color
+    ctx.fillStyle = new THREE.Color(color1).getStyle()
+    ctx.fillRect(0, 0, size, size)
 
-  // Noise
-  for (let i = 0; i < 50000; i++) {
-    const x = Math.random() * size
-    const y = Math.random() * size
-    const w = Math.random() * 3
-    const h = Math.random() * 3
-    const alpha = Math.random() * 0.2
+    // Add noise/craters
+    for (let i = 0; i < 5000; i++) {
+        const x = Math.random() * size
+        const y = Math.random() * size
+        const r = Math.random() * 5
+        const alpha = Math.random() * 0.3
+        
+        ctx.fillStyle = `rgba(0,0,0,${alpha})`
+        ctx.beginPath()
+        ctx.arc(x, y, r, 0, Math.PI * 2)
+        ctx.fill()
+    }
 
-    ctx.fillStyle = `#${new THREE.Color(colorB).getHexString()}`
-    ctx.globalAlpha = alpha
-    ctx.fillRect(x, y, w, h)
-  }
+    // Add larger biomes/patches
+    for (let i = 0; i < 20; i++) {
+        const x = Math.random() * size
+        const y = Math.random() * size
+        const r = 50 + Math.random() * 150
+        const grad = ctx.createRadialGradient(x, y, 0, x, y, r)
+        grad.addColorStop(0, new THREE.Color(color2).getStyle())
+        grad.addColorStop(1, 'transparent')
+        
+        ctx.fillStyle = grad
+        ctx.globalAlpha = 0.4
+        ctx.fillRect(0, 0, size, size)
+    }
 
-  const texture = new THREE.CanvasTexture(canvas)
-  texture.wrapS = THREE.RepeatWrapping
-  texture.wrapT = THREE.RepeatWrapping
-  texture.repeat.set(10, 10) // Tile it
-  return texture
+    const tex = new THREE.CanvasTexture(canvas)
+    tex.wrapS = THREE.RepeatWrapping
+    tex.wrapT = THREE.RepeatWrapping
+    return tex
 }
