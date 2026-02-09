@@ -1,5 +1,6 @@
 export class InputManager {
   keys: { [key: string]: boolean } = {}
+  private prevKeys: { [key: string]: boolean } = {}
   mouseDelta: { x: number, y: number } = { x: 0, y: 0 }
   isLocked: boolean = false
 
@@ -35,10 +36,15 @@ export class InputManager {
     return !!this.keys[code]
   }
 
+  isKeyPressed(code: string): boolean {
+    return !!this.keys[code] && !this.prevKeys[code]
+  }
+
   // Must be called at end of frame
-  resetMouse() {
-      this.mouseDelta.x = 0
-      this.mouseDelta.y = 0
+  update() {
+    this.prevKeys = { ...this.keys }
+    this.mouseDelta.x = 0
+    this.mouseDelta.y = 0
   }
 
   // Helper for common keys
