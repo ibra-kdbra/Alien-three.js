@@ -18,8 +18,8 @@ export class OrbitCamera {
     minPhi: number = 0.1 // Prevent looking straight up (Gimbal lock risk)
     maxPhi: number = Math.PI / 2 - 0.1 // Prevent going below ground
 
-    sensitivity: number = 0.002
-    zoomSpeed: number = 2.0
+    sensitivity: number = 0.005
+    zoomSpeed: number = 5.0
 
     constructor(camera: THREE.PerspectiveCamera, input: InputManager) {
         this.camera = camera
@@ -33,6 +33,8 @@ export class OrbitCamera {
     }
 
     update(dt: number, targetPos: THREE.Vector3, upVec: THREE.Vector3) {
+        const smoothing = 10 * dt
+
         // 1. Process Input
         if (this.input.isLocked) {
             // Mouse X controls Theta (Yaw)
@@ -47,7 +49,7 @@ export class OrbitCamera {
 
         // 2. Smooth Zoom
         // Simple lerp
-        this.currentDistance += (this.targetDistance - this.currentDistance) * 5 * dt
+        this.currentDistance += (this.targetDistance - this.currentDistance) * smoothing
 
         // 3. Compute Camera Position
         // We calculate the position in a "Local" frame where Y is Up.
