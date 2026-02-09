@@ -4,47 +4,59 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Alien Physics Game</title>
+    <title>ASTRA: LOST SIGNAL</title>
   </head>
   <body>
     <div id="app"></div>
 
+    <!-- HUD -->
     <div id="hud">
       <div id="crosshair"></div>
 
       <div class="panel top-left">
-        <h2>ALIEN INFILTRATOR</h2>
-        <div class="subtext">PHYSICS SIMULATION v1.0</div>
+        <h2 class="glitch">ASTRA OS v2.4</h2>
+        <div class="subtext">PLANETARY RECONNAISSANCE</div>
       </div>
 
       <div class="panel top-right">
-        <div id="transmission-log">
-          <div class="msg">SYSTEM ONLINE...</div>
-          <div class="msg">PLANET GRAVITY: 1.0G</div>
+        <div id="mission-log">
+          <div class="msg info">SIGNAL WEAK...</div>
+          <div class="msg warn">BEACON 0/3 LOCATED</div>
         </div>
       </div>
 
       <div class="panel bottom-left">
         <div class="stat-row">
-          <span class="label">MORPHOLOGY:</span>
-          <span id="mode-indicator" class="value human">HUMAN</span>
+          <span class="label">SUIT STATUS:</span>
+          <span id="mode-indicator" class="value nominal">NOMINAL</span>
         </div>
         <div class="stat-row">
-          <span class="label">VEHICLE:</span>
-          <span id="vehicle-indicator" class="value">NONE</span>
+          <span class="label">OXYGEN:</span>
+          <div class="bar-container"><div id="oxygen-bar" class="bar" style="width: 100%"></div></div>
+        </div>
+        <div class="stat-row">
+          <span class="label">SIGNAL:</span>
+          <span id="signal-strength" class="value">0%</span>
         </div>
       </div>
 
       <div class="panel bottom-right">
         <div id="controls-hint">
           <div class="key-row"><span class="key">WASD</span> MOVE</div>
-          <div class="key-row"><span class="key">SPACE</span> JUMP</div>
-          <div class="key-row"><span class="key">Q</span> DISGUISE</div>
+          <div class="key-row"><span class="key">SPACE</span> JETPACK</div>
           <div class="key-row"><span class="key">E</span> INTERACT</div>
-          <div class="key-row"><span class="key">MOUSE</span> CAMERA</div>
-          <div class="key-row"><span class="key">CLICK</span> LOCK CURSOR</div>
+          <div class="key-row"><span class="key">V</span> CAMERA</div>
         </div>
       </div>
+    </div>
+
+    <!-- Loading Screen -->
+    <div id="loading-screen">
+        <div class="loader-content">
+            <h1 class="glitch">INITIALIZING ASTRA...</h1>
+            <div class="progress-container"><div id="loading-bar" class="bar"></div></div>
+            <p id="loading-text">CALIBRATING GRAVITY...</p>
+        </div>
     </div>
 
     <script type="module" src="/src/main.ts"></script>
