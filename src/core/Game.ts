@@ -9,7 +9,8 @@ import { Vehicle } from '../entities/Vehicle'
 import { Planet } from '../entities/Planet'
 import { Beacon } from '../entities/Beacon'
 import { EnvironmentSystem } from '../world/EnvironmentSystem'
-import { skyboxVertex, skyboxFragment } from '../shaders/Skybox'
+import skyboxVertex from '../shaders/skybox.vertex.glsl?raw'
+import skyboxFragment from '../shaders/skybox.fragment.glsl?raw'
 
 export class Game {
   private sceneManager: SceneManager

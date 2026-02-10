@@ -1,5 +1,6 @@
 import * as THREE from 'three'
-import { atmosphereVertex, atmosphereFragment } from '../shaders/Atmosphere'
+import atmosphereVertex from '../shaders/atmosphere.vertex.glsl?raw'
+import atmosphereFragment from '../shaders/atmosphere.fragment.glsl?raw'
 import { createPlanetTexture } from '../utils/TextureGenerator'
 
 export class Planet {
