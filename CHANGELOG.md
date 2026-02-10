@@ -32,6 +32,9 @@
 - **index.html**: Modernized HUD with OS-style interface (Oxygen, Signal, Mission Logs) and functional Loading Screen.
 - **src/style.css**: Clean "NASA-punk" aesthetic styling with blur effects and glitch animations.
 - **scripts/download_assets.cjs**: Created automated script to fetch high-quality CC0 assets for the project.
+- **src/shaders/*.glsl**: Extracted all inline GLSL code into dedicated shader files for better organization and maintainability.
+- **src/shaders.d.ts**: Added TypeScript declarations for raw GLSL imports.
+- **src/utils/TextureGenerator.ts**: Enhanced procedural texture generation with noise and craters for a realistic planetary surface.
 
 ---
 *Note: Each file represents a logical commit in the development history.*
