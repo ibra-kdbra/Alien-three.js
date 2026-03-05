@@ -1,9 +1,11 @@
 # PHASE 1: Architecture & Core Systems
 
 ## Objective
+
 Establish a clean, scalable foundation for the game.
 
 ## Checklist
+
 - [ ] Implement `ResourceManager` (Asset Loader)
 - [ ] Create `Game` entry point class
 - [ ] Implement `SceneManager`
