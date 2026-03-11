@@ -11,6 +11,8 @@
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.19.3",
+    "eventemitter3": "^5.0.4",
+    "miniplex": "^2.0.0",
     "stats.js": "^0.17.0",
     "three": "^0.182.0",
     "three-stdlib": "^2.29.0"
