@@ -1,3 +1,4 @@
+import * as THREE from "three";
 import { Time } from "../utils/Time";
 import { renderer } from "./Renderer";
 import { physicsManager } from "../managers/PhysicsManager";
@@ -44,10 +45,17 @@ export class Engine {
     // 3. Sync Physics back to Three.js Transforms
     updatePhysicsSystem();
 
-    // 4. Render
+    // 4. Update LODs based on new camera position
+    renderer.scene.traverse((object) => {
+      if (object instanceof THREE.LOD) {
+        object.update(renderer.camera);
+      }
+    });
+
+    // 5. Render
     renderer.render();
 
-    // 5. Reset ephemeral state
+    // 6. Reset ephemeral state
     inputManager.resetMouseDelta();
 
     requestAnimationFrame(this.loop);
