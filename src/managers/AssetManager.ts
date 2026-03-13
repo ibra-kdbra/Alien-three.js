@@ -46,9 +46,12 @@ export class AssetManager {
     // We can define a list of required assets here
     const promises = [
       this.loadModel("robot", "/models/player/robot.glb"),
-      // Revert back to the working moon texture but still call them terrain so we don't need to rewrite PlanetFactory
-      this.loadTexture("terrain_diffuse", "/textures/planet/moon_color.jpg"),
-      this.loadTexture("terrain_normal", "/textures/planet/moon_normal.jpg"),
+      this.loadTexture("terrain_diffuse", "/textures/planet/rock_diffuse.jpg"),
+      this.loadTexture("terrain_normal", "/textures/planet/rock_normal.jpg"),
+      this.loadTexture(
+        "terrain_roughness",
+        "/textures/planet/rock_roughness.jpg",
+      ),
     ];
 
     await Promise.all(promises);
