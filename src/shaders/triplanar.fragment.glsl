@@ -1,48 +1,85 @@
-uniform sampler2D diffuseMap;
-uniform vec3 color1;
-uniform vec3 color2;
-uniform float scale;
+uniform sampler2D uDiffuseMap;
+uniform sampler2D uNormalMap;
+uniform sampler2D uRoughnessMap;
+uniform float uScale;
+uniform vec3 uColor;
 
 varying vec3 vNormal;
 varying vec3 vWorldPosition;
 
-// Simple hash for noise
-float hash(vec3 p) {
-    p = fract(p * 0.3183099 + 0.1);
-    p *= 17.0;
-    return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
-}
-
-float noise(vec3 p) {
-    vec3 i = floor(p);
-    vec3 f = fract(p);
-    f = f * f * (3.0 - 2.0 * f);
-    return mix(mix(mix(hash(i + vec3(0, 0, 0)), hash(i + vec3(1, 0, 0)), f.x),
-                   mix(hash(i + vec3(0, 1, 0)), hash(i + vec3(1, 1, 0)), f.x), f.y),
-               mix(mix(hash(i + vec3(0, 0, 1)), hash(i + vec3(1, 0, 1)), f.x),
-                   mix(hash(i + vec3(0, 1, 1)), hash(i + vec3(1, 1, 1)), f.x), f.y), f.z);
-}
+// From Three.js standard lights
+struct DirectionalLight {
+    vec3 direction;
+    vec3 color;
+};
+uniform DirectionalLight directionalLights[ NUM_DIR_LIGHTS ];
+uniform vec3 ambientLightColor;
 
 void main() {
-    // Triplanar weights
+    // 1. Calculate Triplanar Weights based on Normal
     vec3 blending = abs(vNormal);
+    // Force weights to sum to 1.0
     blending /= (blending.x + blending.y + blending.z);
 
-    // Triplanar UVs
-    vec2 xUV = vWorldPosition.zy * scale;
-    vec2 yUV = vWorldPosition.xz * scale;
-    vec2 zUV = vWorldPosition.xy * scale;
+    // 2. Define UVs for all three projections
+    // Using world position so it tiles perfectly regardless of sphere size
+    vec2 xUV = vWorldPosition.zy * uScale;
+    vec2 yUV = vWorldPosition.xz * uScale;
+    vec2 zUV = vWorldPosition.xy * uScale;
 
-    // Sample or Generate Detail
-    float d1 = noise(vWorldPosition * scale * 2.0);
-    float d2 = noise(vWorldPosition * scale * 8.0);
-    float cracks = pow(1.0 - abs(noise(vWorldPosition * scale * 0.5) - 0.5) * 2.0, 10.0);
+    // 3. Sample the Diffuse Map
+    vec4 texX = texture2D(uDiffuseMap, xUV);
+    vec4 texY = texture2D(uDiffuseMap, yUV);
+    vec4 texZ = texture2D(uDiffuseMap, zUV);
 
-    vec3 baseColor = mix(color1, color2, d1);
-    baseColor = mix(baseColor, vec3(0.0, 0.05, 0.05), cracks); // Crack color
+    // Blend the textures together based on the normal weights
+    vec4 diffuseColor = texX * blending.x + texY * blending.y + texZ * blending.z;
 
-    // Lighting (Simple)
-    float diff = max(dot(vNormal, normalize(vec3(1.0, 1.0, 1.0))), 0.2);
+    // Mix with base color if desired
+    diffuseColor.rgb *= uColor;
 
-    gl_FragColor = vec4(baseColor * diff, 1.0);
+    // 4. Sample the Normal Map (Simplified bump mapping for triplanar)
+    // A true triplanar normal map requires tangent basis calculation per plane,
+    // but for a rock surface, blending the color of the normal map and applying it to the vertex normal is a fast approximation.
+    vec4 normX = texture2D(uNormalMap, xUV);
+    vec4 normY = texture2D(uNormalMap, yUV);
+    vec4 normZ = texture2D(uNormalMap, zUV);
+    vec3 blendedNormalTex = (normX.xyz * blending.x + normY.xyz * blending.y + normZ.xyz * blending.z) * 2.0 - 1.0;
+
+    // Perturb the vertex normal (approximate)
+    vec3 finalNormal = normalize(vNormal + blendedNormalTex * 0.5);
+
+    // 5. Sample the Roughness Map
+    vec4 roughX = texture2D(uRoughnessMap, xUV);
+    vec4 roughY = texture2D(uRoughnessMap, yUV);
+    vec4 roughZ = texture2D(uRoughnessMap, zUV);
+    float roughness = (roughX.r * blending.x + roughY.r * blending.y + roughZ.r * blending.z);
+
+    // 6. Lighting Calculation (Diffuse + Specular Approximation)
+    vec3 totalLight = ambientLightColor;
+    vec3 viewDir = normalize(cameraPosition - vWorldPosition);
+
+    #if NUM_DIR_LIGHTS > 0
+        for( int i = 0; i < NUM_DIR_LIGHTS; i++ ) {
+            vec3 lightDir = normalize( directionalLights[ i ].direction );
+
+            // Diffuse (N dot L)
+            float diff = max( dot( finalNormal, lightDir ), 0.0 );
+            totalLight += directionalLights[ i ].color * diff;
+
+            // Specular (Blinn-Phong Approximation based on roughness)
+            vec3 halfDir = normalize(lightDir + viewDir);
+            float specAngle = max(dot(finalNormal, halfDir), 0.0);
+            float shininess = pow(2.0, (1.0 - roughness) * 10.0); // Convert roughness to shininess
+            float specular = pow(specAngle, shininess) * (1.0 - roughness); // Dim specular based on roughness
+
+            totalLight += directionalLights[ i ].color * specular;
+        }
+    #else
+        // Fallback lighting if no lights exist
+        float diff = max(dot(finalNormal, normalize(vec3(1.0, 1.0, 1.0))), 0.2);
+        totalLight += vec3(1.0) * diff;
+    #endif
+
+    gl_FragColor = vec4(diffuseColor.rgb * totalLight, 1.0);
 }
