@@ -12,6 +12,7 @@ export type Entity = {
   // The physics body representing the entity in Rapier
   rigidBody?: RAPIER.RigidBody;
   collider?: RAPIER.Collider;
+  characterController?: RAPIER.KinematicCharacterController;
 
   // Tag components (booleans)
   isPlayer?: boolean;
@@ -26,5 +27,6 @@ export type Entity = {
     grounded: boolean;
     yaw?: number;
     pitch?: number;
+    velocity: { x: number; y: number; z: number }; // Used to store momentum for KCC
   };
 };
