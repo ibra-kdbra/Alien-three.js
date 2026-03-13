@@ -40,7 +40,7 @@ export function updatePhysicsSystem() {
     // Sync Three.js mesh with Rapier rigid body position
     entity.object3d.position.set(position.x, position.y, position.z);
 
-    // Only sync rotation if it's not the player (PlayerControlSystem handles player visual rotation)
+    // Only sync rotation if it's not the player (PlayerControlSystem handles player visual rotation and physics rotation)
     if (!entity.isPlayer) {
       const rotation = entity.rigidBody.rotation();
       entity.object3d.quaternion.set(
