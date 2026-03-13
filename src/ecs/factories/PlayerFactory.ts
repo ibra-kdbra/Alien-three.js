@@ -32,20 +32,26 @@ export function createPlayer(position: { x: number; y: number; z: number }) {
   renderer.scene.add(mesh);
 
   // 2. Create Rapier Physics Body
-  const rigidBodyDesc = RAPIER.RigidBodyDesc.dynamic()
-    .setTranslation(position.x, position.y, position.z)
-    // Lock rotations so the capsule doesn't fall over like a ragdoll.
-    // We will handle visual rotation via the mesh in PlayerControlSystem.
-    .lockRotations()
-    .setCcdEnabled(true); // Continuous Collision Detection prevents passing through the floor
+  // We use Kinematic Position Based for the Character Controller
+  const rigidBodyDesc =
+    RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(
+      position.x,
+      position.y,
+      position.z,
+    );
 
   const rigidBody = physicsManager.world.createRigidBody(rigidBodyDesc);
 
-  // Use a capsule collider for characters, fits better than a box
-  // The robot at scale 0.3 is roughly ~1.5 units tall.
-  // Half-height of 0.5 + radius of 0.25 = 1.0 total height (approx)
+  // Use a capsule collider for characters
   const colliderDesc = RAPIER.ColliderDesc.capsule(0.5, 0.25);
   const collider = physicsManager.world.createCollider(colliderDesc, rigidBody);
+
+  // Create the Character Controller
+  const offset = 0.1;
+  const characterController =
+    physicsManager.world.createCharacterController(offset);
+  characterController.enableAutostep(0.5, 0.2, true); // Allow stepping over small obstacles
+  characterController.enableSnapToGround(0.3); // Keep stuck to the ground when walking down slopes
 
   // 3. Register Entity in ECS
   const entity = world.add({
@@ -54,7 +60,13 @@ export function createPlayer(position: { x: number; y: number; z: number }) {
     object3d: mesh,
     rigidBody,
     collider,
-    playerControl: { speed: 5, jumpForce: 5, grounded: false },
+    characterController,
+    playerControl: {
+      speed: 10,
+      jumpForce: 15,
+      grounded: false,
+      velocity: { x: 0, y: 0, z: 0 }, // Internal momentum tracker for the KCC
+    },
     health: { current: 100, max: 100 },
   });
 
