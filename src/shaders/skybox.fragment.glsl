@@ -8,24 +8,35 @@ float hash(vec3 p) {
 
 void main() {
     vec3 dir = normalize(vWorldPosition);
-    float star = hash(floor(dir * 500.0));
+
+    // Multi-layered star system for depth
+    float star1 = hash(floor(dir * 250.0));
+    float star2 = hash(floor(dir * 600.0));
+    float star3 = hash(floor(dir * 1200.0));
 
     vec3 color = vec3(0.0);
-    if (star > 0.99) {
-        float intensity = pow(hash(dir * 123.0), 10.0) * 2.0;
-        color = vec3(intensity);
+
+    // Large bright stars
+    if (star1 > 0.9995) {
+        float intensity = pow(hash(dir * 123.0), 10.0) * 10.0;
+        color += vec3(intensity) * vec3(1.0, 0.95, 0.9);
     }
 
-    // High-Fidelity Nebula effect (Purple/Pink)
-    float n1 = hash(floor(dir * 1.0));
-    float n2 = hash(floor(dir * 3.0));
-    float n3 = hash(floor(dir * 5.0));
+    // Medium blue stars
+    if (star2 > 0.9997) {
+        float intensity = pow(hash(dir * 456.0), 15.0) * 5.0;
+        color += vec3(intensity) * vec3(0.8, 0.9, 1.0);
+    }
 
-    vec3 nebula1 = vec3(0.1, 0.0, 0.2) * n1; // Deep purple
-    vec3 nebula2 = vec3(0.2, 0.0, 0.1) * n2; // Pinkish
-    vec3 nebula3 = vec3(0.0, 0.05, 0.1) * n3; // Deep blue
+    // Dense tiny background stars
+    if (star3 > 0.9998) {
+        color += vec3(0.8);
+    }
 
-    color += nebula1 + nebula2 + nebula3;
+    // Realistic Milky Way band (very subtle dust/light)
+    float milkyWay = pow(max(0.0, 1.0 - abs(dir.y + dir.x * 0.5)), 3.0) * 0.15;
+    vec3 nebulaColor = vec3(0.05, 0.04, 0.08) * milkyWay;
+    color += nebulaColor;
 
     gl_FragColor = vec4(color, 1.0);
 }

@@ -39,14 +39,12 @@ void main() {
     diffuseColor.rgb *= uColor;
 
     // 4. Sample the Normal Map (Simplified bump mapping for triplanar)
-    // A true triplanar normal map requires tangent basis calculation per plane,
-    // but for a rock surface, blending the color of the normal map and applying it to the vertex normal is a fast approximation.
     vec4 normX = texture2D(uNormalMap, xUV);
     vec4 normY = texture2D(uNormalMap, yUV);
     vec4 normZ = texture2D(uNormalMap, zUV);
     vec3 blendedNormalTex = (normX.xyz * blending.x + normY.xyz * blending.y + normZ.xyz * blending.z) * 2.0 - 1.0;
 
-    // Perturb the vertex normal (approximate)
+    // Perturb the vertex normal
     vec3 finalNormal = normalize(vNormal + blendedNormalTex * 0.5);
 
     // 5. Sample the Roughness Map
