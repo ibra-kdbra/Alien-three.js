@@ -5,7 +5,9 @@ export type InputAction =
   | "move_left"
   | "move_right"
   | "jump"
-  | "action";
+  | "action"
+  | "free_look"
+  | "camera_mode";
 
 export class InputManager {
   private keys: Record<string, boolean> = {};
@@ -18,6 +20,8 @@ export class InputManager {
     KeyD: "move_right",
     Space: "jump",
     KeyE: "action",
+    AltLeft: "free_look",
+    KeyV: "camera_mode",
   };
 
   constructor() {

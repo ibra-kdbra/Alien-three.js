@@ -43,18 +43,16 @@ export class AssetManager {
   }
 
   public async loadAllAssets(): Promise<void> {
-    // We can define a list of required assets here
     const promises = [
       this.loadModel("robot", "/models/player/robot.glb"),
-      this.loadTexture("terrain_diffuse", "/textures/planet/rock_diffuse.jpg"),
-      this.loadTexture("terrain_normal", "/textures/planet/rock_normal.jpg"),
-      this.loadTexture(
-        "terrain_roughness",
-        "/textures/planet/rock_roughness.jpg",
-      ),
+      this.loadTexture("terrain_diffuse", "/textures/planet/alien_diffuse.jpg"),
+      this.loadTexture("terrain_normal", "/textures/planet/alien_normal.jpg"),
     ];
 
     await Promise.all(promises);
+
+    // Ensure we always have a roughness map, even if it's just the diffuse one
+    this.textures["terrain_roughness"] = this.textures["terrain_diffuse"];
   }
 
   public async loadTexture(

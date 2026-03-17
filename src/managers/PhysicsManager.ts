@@ -5,11 +5,10 @@ export class PhysicsManager {
   private isInitialized = false;
 
   public async init() {
-    // @ts-ignore - The types say 0 args, but the runtime library throws a warning if you don't pass an object
-    await RAPIER.init({});
+    await RAPIER.init();
 
-    // Global gravity is zero because we manually apply spherical gravity in PhysicsSystem
-    const gravity = { x: 0.0, y: 0.0, z: 0.0 };
+    // Use standard downward gravity for the flat map
+    const gravity = { x: 0.0, y: -30.0, z: 0.0 };
     this.world = new RAPIER.World(gravity);
 
     this.isInitialized = true;
