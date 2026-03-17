@@ -1,3 +1,4 @@
+import * as THREE from "three";
 import { Object3D } from "three";
 import RAPIER from "@dimforge/rapier3d-compat";
 
@@ -28,5 +29,13 @@ export type Entity = {
     yaw?: number;
     pitch?: number;
     velocity: { x: number; y: number; z: number }; // Used to store momentum for KCC
+    cameraMode?: "Follow" | "Orbit" | "Action";
+  };
+
+  // Animation components
+  animation?: {
+    mixer: THREE.AnimationMixer;
+    actions: Record<string, THREE.AnimationAction>;
+    currentAction?: string;
   };
 };
