@@ -6,17 +6,16 @@ import { physicsManager } from "../../managers/PhysicsManager";
 import { assetManager } from "../../managers/AssetManager";
 
 export function createPlayer(position: { x: number; y: number; z: number }) {
-  // 1. Get the Model from AssetManager
+  // 1. Setup Visual Mesh
   const gltf = assetManager.models["robot"];
-
-  // Clone the scene so we can spawn multiple if we ever want to
   const mesh = gltf.scene.clone();
-  mesh.position.set(position.x, position.y, position.z);
-
-  // The robot model might be too big or small, scale it down
   mesh.scale.set(0.3, 0.3, 0.3);
 
-  // Enable shadows on the model
+  // Offset the model so the feet are at the bottom of the capsule origin
+  // We'll use a hardcoded capsule for stability:
+  // Half-height: 0.5, Radius: 0.3 -> Bottom is at -0.8
+  mesh.position.y = -0.8;
+
   mesh.traverse((child) => {
     if (child instanceof THREE.Mesh) {
       child.castShadow = true;
@@ -24,51 +23,58 @@ export function createPlayer(position: { x: number; y: number; z: number }) {
     }
   });
 
-  // Add a local light so we can always see the player on the dark side of the moon
-  const light = new THREE.PointLight(0xffaa44, 2, 10);
+  const light = new THREE.PointLight(0xffaa44, 5, 10);
   light.position.set(0, 2, 0);
   mesh.add(light);
-
   renderer.scene.add(mesh);
 
-  // 2. Create Rapier Physics Body
-  // We use Kinematic Position Based for the Character Controller
-  const rigidBodyDesc =
-    RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(
-      position.x,
-      position.y,
-      position.z,
-    );
+  // 2. Setup Animations
+  const mixer = new THREE.AnimationMixer(mesh);
+  const actions: Record<string, THREE.AnimationAction> = {};
+
+  gltf.animations.forEach((clip) => {
+    const action = mixer.clipAction(clip);
+    actions[clip.name] = action;
+  });
+
+  // Start with Idle
+  if (actions["Idle"]) actions["Idle"].play();
+
+  // 2. Setup Dynamic Rigidbody
+  // A dynamic body naturally falls, hits the ground, and slides along slopes
+  // without needing complex raycast logic or a glitchy KCC.
+  const rigidBodyDesc = RAPIER.RigidBodyDesc.dynamic()
+    .setTranslation(position.x, position.y, position.z)
+    .lockRotations(); // Keep the capsule perfectly upright
 
   const rigidBody = physicsManager.world.createRigidBody(rigidBodyDesc);
 
-  // Use a capsule collider for characters
-  const colliderDesc = RAPIER.ColliderDesc.capsule(0.5, 0.25);
+  // Use a hardcoded, professional-standard capsule size
+  // height 0.5 is half-length of the cylinder part
+  // radius 0.3 is the spherical cap radius
+  const colliderDesc = RAPIER.ColliderDesc.capsule(0.5, 0.3)
+    .setFriction(0.0) // Zero friction prevents snagging on terrain edges
+    .setRestitution(0.0); // Zero bounce
+
   const collider = physicsManager.world.createCollider(colliderDesc, rigidBody);
 
-  // Create the Character Controller
-  const offset = 0.1;
-  const characterController =
-    physicsManager.world.createCharacterController(offset);
-  characterController.enableAutostep(0.5, 0.2, true); // Allow stepping over small obstacles
-  characterController.enableSnapToGround(0.3); // Keep stuck to the ground when walking down slopes
-
-  // 3. Register Entity in ECS
-  const entity = world.add({
+  return world.add({
     name: "Player",
     isPlayer: true,
     object3d: mesh,
     rigidBody,
     collider,
-    characterController,
     playerControl: {
-      speed: 10,
-      jumpForce: 15,
+      speed: 12.0,
+      jumpForce: 15.0,
       grounded: false,
-      velocity: { x: 0, y: 0, z: 0 }, // Internal momentum tracker for the KCC
+      velocity: { x: 0, y: 0, z: 0 },
+    },
+    animation: {
+      mixer,
+      actions,
+      currentAction: "Idle",
     },
     health: { current: 100, max: 100 },
   });
-
-  return entity;
 }
