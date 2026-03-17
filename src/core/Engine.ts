@@ -5,6 +5,7 @@ import { physicsManager } from "../managers/PhysicsManager";
 import { updatePhysicsSystem } from "../ecs/systems/PhysicsSystem";
 import { updatePlayerControlSystem } from "../ecs/systems/PlayerControlSystem";
 import { inputManager } from "../managers/InputManager";
+import { debugManager } from "../managers/DebugManager";
 
 export class Engine {
   private time: Time;
@@ -44,6 +45,9 @@ export class Engine {
 
     // 3. Sync Physics back to Three.js Transforms
     updatePhysicsSystem();
+
+    // Debug Update
+    debugManager.update();
 
     // 4. Update LODs based on new camera position
     renderer.scene.traverse((object) => {
