@@ -2,165 +2,250 @@ import * as THREE from "three";
 import { queries } from "../World";
 import { inputManager } from "../../managers/InputManager";
 import { renderer } from "../../core/Renderer";
+import { physicsManager } from "../../managers/PhysicsManager";
+import RAPIER from "@dimforge/rapier3d-compat";
 
 export function updatePlayerControlSystem(delta: number) {
   for (const player of queries.player) {
-    const { playerControl, rigidBody, object3d } = player;
+    const { playerControl, rigidBody, collider, object3d, animation } = player;
 
-    // 1. Get Input
-    const direction = inputManager.getDirection();
-    const velocity = rigidBody.linvel();
+    if (!collider || !rigidBody || !object3d) continue;
 
-    // --- Camera Rotation based on Mouse ---
-    if (!playerControl.yaw) playerControl.yaw = 0;
-    if (!playerControl.pitch) playerControl.pitch = 0;
+    // 1. Setup Basis (Standard Y-Up)
+    const currentPos = rigidBody.translation();
+    const playerPosVec = new THREE.Vector3(
+      currentPos.x,
+      currentPos.y,
+      currentPos.z,
+    );
+    const upVector = new THREE.Vector3(0, 1, 0);
 
-    const mouseSensitivity = 0.002;
+    // --- 2. Camera Mode & Input ---
+    if (playerControl.yaw === undefined) playerControl.yaw = 0;
+    if (playerControl.pitch === undefined) playerControl.pitch = 0;
+    if (!playerControl.cameraMode) playerControl.cameraMode = "Follow";
+
+    // Toggle Camera Mode (Key V)
+    if (
+      inputManager.getAction("camera_mode") > 0 &&
+      !(player as any)._v_pressed
+    ) {
+      if (playerControl.cameraMode === "Follow")
+        playerControl.cameraMode = "Action";
+      else if (playerControl.cameraMode === "Action")
+        playerControl.cameraMode = "Orbit";
+      else playerControl.cameraMode = "Follow";
+      (player as any)._v_pressed = true;
+    } else if (inputManager.getAction("camera_mode") === 0) {
+      (player as any)._v_pressed = false;
+    }
+
+    const isFreeLooking = inputManager.getAction("free_look") > 0;
+    const mouseSensitivity = 0.003;
     playerControl.yaw -= inputManager.mouseDelta.x * mouseSensitivity;
     playerControl.pitch -= inputManager.mouseDelta.y * mouseSensitivity;
-
-    // Clamp pitch to avoid flipping over
     playerControl.pitch = Math.max(
-      -Math.PI / 2 + 0.1,
-      Math.min(Math.PI / 2 - 0.1, playerControl.pitch),
+      -Math.PI / 2 + 0.2,
+      Math.min(Math.PI / 2 - 0.2, playerControl.pitch),
     );
 
-    // --- Find Nearest Planet for Spherical Gravity ---
-    let nearestPlanet = null;
-    let minDistance = Infinity;
+    let targetCamDist = 6.0;
+    let camFov = 75;
+    if (playerControl.cameraMode === "Action") {
+      targetCamDist = 3.5;
+      camFov = 60;
+    }
+    if (playerControl.cameraMode === "Orbit") {
+      targetCamDist = 12.0;
+    }
 
-    for (const planet of queries.planets) {
-      const dist = object3d.position.distanceTo(planet.object3d.position);
-      if (dist < minDistance) {
-        minDistance = dist;
-        nearestPlanet = planet;
+    renderer.camera.fov = THREE.MathUtils.lerp(
+      renderer.camera.fov,
+      camFov,
+      5 * delta,
+    );
+    renderer.camera.updateProjectionMatrix();
+
+    // Standard Trailing Camera calculation
+    const camRotation = new THREE.Euler(
+      playerControl.pitch,
+      playerControl.yaw,
+      0,
+      "YXZ",
+    );
+    const camOffset = new THREE.Vector3(0, 0, targetCamDist).applyEuler(
+      camRotation,
+    );
+    const heightVec = new THREE.Vector3(0, 1.6, 0);
+
+    let targetCamPos = playerPosVec.clone().add(heightVec).add(camOffset);
+
+    // Camera Collision (Raycast)
+    const camRayDir = camOffset.clone().normalize();
+    if (camRayDir.lengthSq() > 0.001) {
+      const camRay = new RAPIER.Ray(
+        {
+          x: playerPosVec.x,
+          y: playerPosVec.y + heightVec.y,
+          z: playerPosVec.z,
+        },
+        { x: camRayDir.x, y: camRayDir.y, z: camRayDir.z },
+      );
+      const camHit = physicsManager.world.castRay(
+        camRay,
+        targetCamDist,
+        true,
+        undefined,
+        undefined,
+        undefined,
+        rigidBody,
+      );
+      if (camHit) {
+        // Protection: minimum safe distance to avoid NaN when camera is exactly on player
+        const safeDist = Math.max(0.5, (camHit as any).toi * 0.9);
+        targetCamPos = playerPosVec
+          .clone()
+          .add(heightVec)
+          .add(camRayDir.multiplyScalar(safeDist));
       }
     }
 
-    // Default "Up" is positive Y if no planet
-    const upVector = new THREE.Vector3(0, 1, 0);
-    if (nearestPlanet) {
-      upVector
-        .copy(object3d.position)
-        .sub(nearestPlanet.object3d.position)
-        .normalize();
+    // --- Black Screen / NaN Protection ---
+    if (
+      !isNaN(targetCamPos.x) &&
+      !isNaN(targetCamPos.y) &&
+      !isNaN(targetCamPos.z)
+    ) {
+      renderer.camera.position.lerp(targetCamPos, 15 * delta);
+
+      const lookTarget = playerPosVec.clone().add(heightVec);
+      if (!isNaN(lookTarget.x)) {
+        renderer.camera.lookAt(lookTarget);
+      }
     }
 
-    // Calculate camera basis vectors
-    const cosYaw = Math.cos(playerControl.yaw);
-    const sinYaw = Math.sin(playerControl.yaw);
+    // --- 3. Dynamic Movement Logic ---
+    const input = inputManager.getDirection();
+    const currentVelocity = rigidBody.linvel();
 
-    // Create a local coordinate system where "Up" is away from the planet
-    // and "Forward" depends on the camera yaw.
-    const forwardVector = new THREE.Vector3(sinYaw, 0, cosYaw).normalize();
-    forwardVector.projectOnPlane(upVector).normalize();
+    // Calculate forward/right vectors based on camera yaw
+    const forward = new THREE.Vector3(0, 0, -1).applyEuler(
+      new THREE.Euler(0, playerControl.yaw, 0),
+    );
+    const right = new THREE.Vector3(1, 0, 0).applyEuler(
+      new THREE.Euler(0, playerControl.yaw, 0),
+    );
 
-    const rightVector = new THREE.Vector3()
-      .crossVectors(forwardVector, upVector)
-      .normalize();
-
-    // Map Input direction to World direction based on our local basis
     const moveDir = new THREE.Vector3();
-    moveDir.addScaledVector(rightVector, direction.x);
-    moveDir.addScaledVector(forwardVector, direction.z);
+    const inputMagSq = input.x * input.x + input.z * input.z;
+    if (inputMagSq > 0) {
+      moveDir.addScaledVector(right, input.x);
+      moveDir.addScaledVector(forward, -input.z);
+      moveDir.normalize();
 
-    // Target Velocity on the plane
-    const targetVelocity = moveDir.multiplyScalar(playerControl.speed);
+      // Wake up the physics body if it went to sleep while idle
+      rigidBody.wakeUp();
+    }
 
-    // Current Velocity
-    const currentVelocity = new THREE.Vector3(
-      velocity.x,
-      velocity.y,
-      velocity.z,
+    // Horizontal Velocity Lerping (Direct Physics Velocity Manipulation)
+    const targetHorizontalVel = moveDir
+      .clone()
+      .multiplyScalar(playerControl.speed);
+    const currentHorizontalVel = new THREE.Vector3(
+      currentVelocity.x,
+      0,
+      currentVelocity.z,
     );
 
-    // Project current velocity onto the upVector to get the vertical (falling) component
-    const verticalSpeed = currentVelocity.dot(upVector);
-    const verticalVelocity = upVector.clone().multiplyScalar(verticalSpeed);
+    // Snappy acceleration and tight friction (damping) when letting go of keys
+    const lerpSpeed = inputMagSq > 0 ? 10.0 : 20.0;
+    currentHorizontalVel.lerp(targetHorizontalVel, lerpSpeed * delta);
 
-    // --- Safe Kinematic-like Movement via Forces/Impulses ---
+    // Vertical Velocity (Gravity/Jump) - Let Rapier handle gravity!
+    let newYVel = currentVelocity.y;
 
-    // Check if grounded (if vertical speed towards planet is very small and we are near the planet)
-    // Since planet radius is 50, and we spawn slightly above it:
-    const distToCenter = nearestPlanet
-      ? object3d.position.distanceTo(nearestPlanet.object3d.position)
-      : 0;
-    const isNearGround = distToCenter < 50 + 2.0; // Planet radius + capsule height tolerance
+    // Ground Detection Raycast (Dynamic Bodies need an explicit ground check to jump)
+    const groundRay = new RAPIER.Ray(
+      { x: playerPosVec.x, y: playerPosVec.y + 0.1, z: playerPosVec.z }, // Start slightly above feet
+      { x: 0, y: -1, z: 0 },
+    );
 
-    // If we aren't falling fast and are near the ground, we are grounded
-    playerControl.grounded = isNearGround && verticalSpeed > -0.5;
+    // Cast ray down up to 0.3 units (since ray starts 0.1 above bottom, this gives 0.2 tolerance)
+    const groundHit = physicsManager.world.castRay(
+      groundRay,
+      0.3,
+      true,
+      undefined,
+      undefined,
+      undefined,
+      rigidBody,
+    );
 
-    // We apply movement as a continuous force (or impulse) rather than overwriting velocity.
-    // Overwriting velocity in Rapier while locked to the ground causes immense friction/sticking issues.
+    // Grounded if hit something AND not moving upwards rapidly
+    playerControl.grounded = groundHit !== null && newYVel < 1.0;
 
-    // Calculate a force vector instead of a strict target velocity
-    // If in air, give less control
-    const airControl = playerControl.grounded ? 1.0 : 0.2;
-    const moveForce = targetVelocity.multiplyScalar(60 * delta * airControl); // Mass multiplier factor
-
-    // Apply horizontal force
-    if (moveForce.lengthSq() > 0.001) {
-      rigidBody.wakeUp();
-      rigidBody.applyImpulse(
-        { x: moveForce.x, y: moveForce.y, z: moveForce.z },
-        true,
-      );
-    }
-
-    // Apply linear damping (friction) manually to horizontal plane so we stop when releasing keys
-    if (playerControl.grounded && direction.x === 0 && direction.z === 0) {
-      const horizontalVelocity = currentVelocity.clone().sub(verticalVelocity);
-      // Reduce horizontal velocity (friction)
-      horizontalVelocity.multiplyScalar(Math.pow(0.01, delta)); // Damping factor
-
-      const newVel = new THREE.Vector3().addVectors(
-        horizontalVelocity,
-        verticalVelocity,
-      );
-      rigidBody.setLinvel({ x: newVel.x, y: newVel.y, z: newVel.z }, true);
-    }
-
-    // Jump Logic
-    const jump = inputManager.getAction("jump");
-    if (jump > 0 && playerControl.grounded) {
-      rigidBody.wakeUp();
-      const jumpImpulse = upVector
-        .clone()
-        .multiplyScalar(playerControl.jumpForce * 2); // Impulse needs more power than velocity
-      rigidBody.applyImpulse(
-        { x: jumpImpulse.x, y: jumpImpulse.y, z: jumpImpulse.z },
-        true,
-      );
+    // Handle Jump
+    if (inputManager.getAction("jump") > 0 && playerControl.grounded) {
+      newYVel = playerControl.jumpForce;
       playerControl.grounded = false;
+      rigidBody.wakeUp();
     }
 
-    // --- Orbit camera implementation relative to "Up" ---
-    const playerPos = object3d.position;
-    const distance = 8; // distance from player
-    const heightOffset = 2; // Look slightly above the player's origin
-
-    const pitchAxis = rightVector.clone();
-    const camOffset = forwardVector.clone().multiplyScalar(-distance);
-    camOffset.applyAxisAngle(pitchAxis, playerControl.pitch);
-
-    const heightVec = upVector.clone().multiplyScalar(heightOffset);
-    const finalCamPos = playerPos.clone().add(camOffset).add(heightVec);
-
-    renderer.camera.position.lerp(finalCamPos, 15 * delta);
-
-    const targetLookAt = playerPos.clone().add(heightVec);
-    renderer.camera.lookAt(targetLookAt);
-
-    // Sync mesh rotation to gravity and camera yaw
-    const targetQuaternion = new THREE.Quaternion();
-    targetQuaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), upVector);
-
-    const yawQuaternion = new THREE.Quaternion().setFromAxisAngle(
-      new THREE.Vector3(0, 1, 0),
-      playerControl.yaw + Math.PI,
+    // Apply the final velocity back to the Dynamic rigid body
+    // We explicitly overwrite X and Z, but we use the physics engine's simulated Y velocity (unless jumping).
+    // This perfectly prevents floating and lets the character naturally slide down slopes.
+    rigidBody.setLinvel(
+      {
+        x: currentHorizontalVel.x,
+        y: newYVel,
+        z: currentHorizontalVel.z,
+      },
+      true,
     );
 
-    targetQuaternion.multiply(yawQuaternion);
-    object3d.quaternion.slerp(targetQuaternion, 10 * delta);
+    // --- 4. Visual Orientation ---
+    const targetQuaternion = new THREE.Quaternion();
+    if (inputMagSq > 0 && !isFreeLooking) {
+      const moveAngle = Math.atan2(moveDir.x, moveDir.z);
+      targetQuaternion.setFromAxisAngle(upVector, moveAngle);
+
+      if (!object3d.userData.lastHeading)
+        object3d.userData.lastHeading = targetQuaternion.clone();
+      else object3d.userData.lastHeading.copy(targetQuaternion);
+    } else if (object3d.userData.lastHeading) {
+      targetQuaternion.copy(object3d.userData.lastHeading);
+    }
+
+    // Smoothly turn visual mesh to face movement direction
+    object3d.quaternion.slerp(targetQuaternion, 15 * delta);
+
+    // --- 5. Animation ---
+    if (animation) {
+      const horizontalSpeed = currentHorizontalVel.length();
+      let nextAction = "Idle";
+
+      // We check vertical velocity to determine if we are falling/jumping
+      if (!playerControl.grounded && Math.abs(newYVel) > 1.0) {
+        nextAction = "Jump";
+      } else if (horizontalSpeed > 0.5) {
+        nextAction =
+          horizontalSpeed > playerControl.speed * 0.6 ? "Running" : "Walking";
+      }
+
+      if (animation.currentAction !== nextAction) {
+        const prevAction = animation.actions[animation.currentAction!];
+        const newAction = animation.actions[nextAction];
+        if (newAction) {
+          if (prevAction) prevAction.fadeOut(0.2);
+          newAction.reset().fadeIn(0.2).play();
+          animation.currentAction = nextAction;
+        }
+      }
+
+      // Match animation speed to actual physical movement speed to eliminate sliding
+      animation.mixer.timeScale =
+        nextAction === "Idle" ? 1.0 : Math.max(0.5, horizontalSpeed / 5.0);
+      animation.mixer.update(delta);
+    }
   }
 }
