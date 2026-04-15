@@ -5,6 +5,7 @@ export type InputAction =
   | "move_left"
   | "move_right"
   | "jump"
+  | "sprint"
   | "action"
   | "free_look"
   | "camera_mode";
@@ -19,6 +20,8 @@ export class InputManager {
     KeyA: "move_left",
     KeyD: "move_right",
     Space: "jump",
+    ShiftLeft: "sprint",
+    ShiftRight: "sprint",
     KeyE: "action",
     AltLeft: "free_look",
     KeyV: "camera_mode",
@@ -31,6 +34,7 @@ export class InputManager {
     // Mouse setup
     document.addEventListener("pointerlockchange", this.onPointerLockChange);
     document.addEventListener("mousemove", this.onMouseMove);
+    document.addEventListener("wheel", this.onWheel, { passive: true });
 
     // Auto lock on canvas click
     document.addEventListener("click", (e) => {
@@ -50,7 +54,9 @@ export class InputManager {
 
   // Mouse handling
   public pointerLocked: boolean = false;
+  // Accumulate mouse movement between frames (don't overwrite!)
   public mouseDelta = { x: 0, y: 0 };
+  public scrollDelta = 0;
 
   public lockPointer() {
     document.body.requestPointerLock();
@@ -62,14 +68,20 @@ export class InputManager {
 
   private onMouseMove = (event: MouseEvent) => {
     if (this.pointerLocked) {
-      this.mouseDelta.x = event.movementX || 0;
-      this.mouseDelta.y = event.movementY || 0;
+      // Accumulate — multiple mousemove events can fire per frame
+      this.mouseDelta.x += event.movementX || 0;
+      this.mouseDelta.y += event.movementY || 0;
     }
+  };
+
+  private onWheel = (event: WheelEvent) => {
+    this.scrollDelta += event.deltaY;
   };
 
   public resetMouseDelta() {
     this.mouseDelta.x = 0;
     this.mouseDelta.y = 0;
+    this.scrollDelta = 0;
   }
 
   // Returns 0 or 1 for now (could be extended for analog sticks)
