@@ -5,7 +5,7 @@
 
 # Use porcelain v1 for consistent output
 # -uall ensures that files within untracked directories are listed individually
-git status --porcelain=v1 -uall | while read -r line; do
+git status --porcelain=v1 -uall | while IFS= read -r line; do
     # Extract status (first 2 characters) and filename (from index 3 onwards)
     status_code="${line:0:2}"
     file_path="${line:3}"
