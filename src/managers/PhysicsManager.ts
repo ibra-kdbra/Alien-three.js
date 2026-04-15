@@ -4,20 +4,34 @@ export class PhysicsManager {
   public world!: RAPIER.World;
   private isInitialized = false;
 
+  // Fixed timestep for stable physics simulation
+  private fixedTimestep = 1 / 60;
+  private accumulator = 0;
+
   public async init() {
     await RAPIER.init();
 
-    // Use standard downward gravity for the flat map
-    const gravity = { x: 0.0, y: -30.0, z: 0.0 };
+    // Realistic Earth-like gravity
+    const gravity = { x: 0.0, y: -9.81, z: 0.0 };
     this.world = new RAPIER.World(gravity);
 
     this.isInitialized = true;
     console.log("Rapier3D Physics Initialized");
   }
 
-  public step() {
+  public step(delta?: number) {
     if (!this.isInitialized) return;
-    this.world.step();
+
+    if (delta !== undefined) {
+      // Accumulator-based fixed timestep for frame-rate independent physics
+      this.accumulator += delta;
+      while (this.accumulator >= this.fixedTimestep) {
+        this.world.step();
+        this.accumulator -= this.fixedTimestep;
+      }
+    } else {
+      this.world.step();
+    }
   }
 }
 
