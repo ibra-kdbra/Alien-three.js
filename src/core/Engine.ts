@@ -4,6 +4,10 @@ import { renderer } from "./Renderer";
 import { physicsManager } from "../managers/PhysicsManager";
 import { updatePhysicsSystem } from "../ecs/systems/PhysicsSystem";
 import { updatePlayerControlSystem } from "../ecs/systems/PlayerControlSystem";
+import { updateBeaconSystem } from "../ecs/systems/BeaconSystem";
+import { updateOxygenSystem } from "../ecs/systems/OxygenSystem";
+import { updateHazardVisuals } from "../ecs/factories/HazardFactory";
+import { updateParticleSystem } from "../ecs/systems/ParticleSystem";
 import { inputManager } from "../managers/InputManager";
 import { debugManager } from "../managers/DebugManager";
 
@@ -36,30 +40,40 @@ export class Engine {
 
     // Update time
     this.time.update();
+    const delta = this.time.delta;
+    const elapsed = this.time.elapsed;
 
-    // 1. Inputs & Logic
-    updatePlayerControlSystem(this.time.delta);
+    // 1. Inputs & Player Logic
+    updatePlayerControlSystem(delta);
 
-    // 2. Physics Step
-    physicsManager.step();
+    // 2. Gameplay Systems
+    updateBeaconSystem(delta, elapsed);
+    updateOxygenSystem(delta);
 
-    // 3. Sync Physics back to Three.js Transforms
+    // 3. Physics Step (fixed timestep)
+    physicsManager.step(delta);
+
+    // 4. Sync Physics back to Three.js Transforms
     updatePhysicsSystem();
+
+    // 5. Visual Systems
+    updateHazardVisuals(delta, elapsed);
+    updateParticleSystem(delta, elapsed);
 
     // Debug Update
     debugManager.update();
 
-    // 4. Update LODs based on new camera position
+    // 6. Update LODs based on new camera position
     renderer.scene.traverse((object) => {
       if (object instanceof THREE.LOD) {
         object.update(renderer.camera);
       }
     });
 
-    // 5. Render
-    renderer.render();
+    // 7. Render
+    renderer.render(delta);
 
-    // 6. Reset ephemeral state
+    // 8. Reset ephemeral state
     inputManager.resetMouseDelta();
 
     requestAnimationFrame(this.loop);
