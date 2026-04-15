@@ -14,4 +14,10 @@ export const queries = {
 
   // Planets
   planets: world.with("isPlanet", "object3d"),
+
+  // Beacons
+  beacons: world.with("isBeacon", "object3d", "beacon"),
+
+  // Hazards
+  hazards: world.with("isHazard", "object3d", "hazard"),
 };
