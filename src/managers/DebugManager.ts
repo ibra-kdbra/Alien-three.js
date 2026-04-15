@@ -4,7 +4,7 @@ import { renderer } from "../core/Renderer";
 
 export class DebugManager {
   private lineSegments: THREE.LineSegments;
-  private enabled: boolean = true; // Set to false to disable debug view
+  private enabled: boolean = false; // Disabled by default in production
 
   constructor() {
     // Create the Three.js object to hold physics debug lines
@@ -15,8 +15,17 @@ export class DebugManager {
     const geometry = new THREE.BufferGeometry();
     this.lineSegments = new THREE.LineSegments(geometry, material);
     this.lineSegments.frustumCulled = false; // Always render debug lines
+    this.lineSegments.visible = false;
 
     renderer.scene.add(this.lineSegments);
+
+    // Toggle with F3
+    window.addEventListener("keydown", (e) => {
+      if (e.code === "F3") {
+        e.preventDefault();
+        this.setEnabled(!this.enabled);
+      }
+    });
   }
 
   public update() {
@@ -39,6 +48,7 @@ export class DebugManager {
   public setEnabled(value: boolean) {
     this.enabled = value;
     this.lineSegments.visible = value;
+    console.log(`Debug rendering: ${value ? "ON" : "OFF"}`);
   }
 }
 
