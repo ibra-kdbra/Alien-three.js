@@ -6,14 +6,16 @@ import { physicsManager } from "../../managers/PhysicsManager";
 import { assetManager } from "../../managers/AssetManager";
 
 export function createPlayer(position: { x: number; y: number; z: number }) {
+  // Container group — holds the mesh with its offset
+  const container = new THREE.Group();
+
   // 1. Setup Visual Mesh
   const gltf = assetManager.models["robot"];
   const mesh = gltf.scene.clone();
   mesh.scale.set(0.3, 0.3, 0.3);
 
   // Offset the model so the feet are at the bottom of the capsule origin
-  // We'll use a hardcoded capsule for stability:
-  // Half-height: 0.5, Radius: 0.3 -> Bottom is at -0.8
+  // Capsule: Half-height 0.5, Radius 0.3 → Bottom is at -0.8
   mesh.position.y = -0.8;
 
   mesh.traverse((child) => {
@@ -23,10 +25,19 @@ export function createPlayer(position: { x: number; y: number; z: number }) {
     }
   });
 
-  const light = new THREE.PointLight(0xffaa44, 5, 10);
-  light.position.set(0, 2, 0);
-  mesh.add(light);
-  renderer.scene.add(mesh);
+  // Helmet visor glow light
+  const visorLight = new THREE.PointLight(0x44aaff, 3, 8);
+  visorLight.position.set(0, 1.5, 0.3);
+  visorLight.castShadow = false;
+  mesh.add(visorLight);
+
+  // Subtle warm backlight for depth
+  const backLight = new THREE.PointLight(0xffaa44, 2, 6);
+  backLight.position.set(0, 1, -0.5);
+  mesh.add(backLight);
+
+  container.add(mesh);
+  renderer.scene.add(container);
 
   // 2. Setup Animations
   const mixer = new THREE.AnimationMixer(mesh);
@@ -40,20 +51,18 @@ export function createPlayer(position: { x: number; y: number; z: number }) {
   // Start with Idle
   if (actions["Idle"]) actions["Idle"].play();
 
-  // 2. Setup Dynamic Rigidbody
-  // A dynamic body naturally falls, hits the ground, and slides along slopes
-  // without needing complex raycast logic or a glitchy KCC.
+  // 3. Setup Dynamic Rigidbody
   const rigidBodyDesc = RAPIER.RigidBodyDesc.dynamic()
     .setTranslation(position.x, position.y, position.z)
-    .lockRotations(); // Keep the capsule perfectly upright
+    .lockRotations() // Keep the capsule perfectly upright
+    .setLinearDamping(0.5) // Prevent infinite sliding
+    .setAngularDamping(1.0);
 
   const rigidBody = physicsManager.world.createRigidBody(rigidBodyDesc);
 
-  // Use a hardcoded, professional-standard capsule size
-  // height 0.5 is half-length of the cylinder part
-  // radius 0.3 is the spherical cap radius
+  // Capsule: half-height 0.5, radius 0.3
   const colliderDesc = RAPIER.ColliderDesc.capsule(0.5, 0.3)
-    .setFriction(0.0) // Zero friction prevents snagging on terrain edges
+    .setFriction(0.1) // Tiny friction to prevent snagging on terrain edges
     .setRestitution(0.0); // Zero bounce
 
   const collider = physicsManager.world.createCollider(colliderDesc, rigidBody);
@@ -61,14 +70,18 @@ export function createPlayer(position: { x: number; y: number; z: number }) {
   return world.add({
     name: "Player",
     isPlayer: true,
-    object3d: mesh,
+    object3d: container,
     rigidBody,
     collider,
     playerControl: {
-      speed: 12.0,
-      jumpForce: 15.0,
+      speed: 8.0,
+      sprintSpeed: 14.0,
+      jumpForce: 7.0,
       grounded: false,
       velocity: { x: 0, y: 0, z: 0 },
+      oxygen: 100,
+      maxOxygen: 100,
+      cameraDistance: 6.0,
     },
     animation: {
       mixer,
