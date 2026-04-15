@@ -3,7 +3,12 @@ import { queries } from "../World";
 import { inputManager } from "../../managers/InputManager";
 import { renderer } from "../../core/Renderer";
 import { physicsManager } from "../../managers/PhysicsManager";
+import { events } from "../../utils/EventBus";
 import RAPIER from "@dimforge/rapier3d-compat";
+
+// Smooth camera follow state
+let smoothCamPos = new THREE.Vector3(0, 10, 15);
+let smoothLookTarget = new THREE.Vector3();
 
 export function updatePlayerControlSystem(delta: number) {
   for (const player of queries.player) {
@@ -11,7 +16,7 @@ export function updatePlayerControlSystem(delta: number) {
 
     if (!collider || !rigidBody || !object3d) continue;
 
-    // 1. Setup Basis (Standard Y-Up)
+    // 1. Setup Basis
     const currentPos = rigidBody.translation();
     const playerPosVec = new THREE.Vector3(
       currentPos.x,
@@ -22,10 +27,12 @@ export function updatePlayerControlSystem(delta: number) {
 
     // --- 2. Camera Mode & Input ---
     if (playerControl.yaw === undefined) playerControl.yaw = 0;
-    if (playerControl.pitch === undefined) playerControl.pitch = 0;
+    if (playerControl.pitch === undefined) playerControl.pitch = -0.2;
     if (!playerControl.cameraMode) playerControl.cameraMode = "Follow";
+    if (playerControl.cameraDistance === undefined)
+      playerControl.cameraDistance = 6.0;
 
-    // Toggle Camera Mode (Key V)
+    // Toggle Camera Mode (Key V) — with debounce
     if (
       inputManager.getAction("camera_mode") > 0 &&
       !(player as any)._v_pressed
@@ -40,23 +47,34 @@ export function updatePlayerControlSystem(delta: number) {
       (player as any)._v_pressed = false;
     }
 
+    // Mouse look
     const isFreeLooking = inputManager.getAction("free_look") > 0;
-    const mouseSensitivity = 0.003;
+    const mouseSensitivity = 0.002;
     playerControl.yaw -= inputManager.mouseDelta.x * mouseSensitivity;
     playerControl.pitch -= inputManager.mouseDelta.y * mouseSensitivity;
     playerControl.pitch = Math.max(
-      -Math.PI / 2 + 0.2,
-      Math.min(Math.PI / 2 - 0.2, playerControl.pitch),
+      -Math.PI / 2 + 0.1,
+      Math.min(Math.PI / 3, playerControl.pitch),
     );
 
-    let targetCamDist = 6.0;
+    // Scroll zoom
+    if (inputManager.scrollDelta !== 0) {
+      playerControl.cameraDistance = THREE.MathUtils.clamp(
+        playerControl.cameraDistance + inputManager.scrollDelta * 0.01,
+        2.0,
+        20.0,
+      );
+    }
+
+    // Camera distance & FOV based on mode
+    let targetCamDist = playerControl.cameraDistance;
     let camFov = 75;
     if (playerControl.cameraMode === "Action") {
-      targetCamDist = 3.5;
+      targetCamDist = Math.min(playerControl.cameraDistance, 3.5);
       camFov = 60;
     }
     if (playerControl.cameraMode === "Orbit") {
-      targetCamDist = 12.0;
+      targetCamDist = Math.max(playerControl.cameraDistance, 12.0);
     }
 
     renderer.camera.fov = THREE.MathUtils.lerp(
@@ -66,7 +84,7 @@ export function updatePlayerControlSystem(delta: number) {
     );
     renderer.camera.updateProjectionMatrix();
 
-    // Standard Trailing Camera calculation
+    // Camera orbit calculation
     const camRotation = new THREE.Euler(
       playerControl.pitch,
       playerControl.yaw,
@@ -76,7 +94,7 @@ export function updatePlayerControlSystem(delta: number) {
     const camOffset = new THREE.Vector3(0, 0, targetCamDist).applyEuler(
       camRotation,
     );
-    const heightVec = new THREE.Vector3(0, 1.6, 0);
+    const heightVec = new THREE.Vector3(0, 1.8, 0);
 
     let targetCamPos = playerPosVec.clone().add(heightVec).add(camOffset);
 
@@ -101,32 +119,36 @@ export function updatePlayerControlSystem(delta: number) {
         rigidBody,
       );
       if (camHit) {
-        // Protection: minimum safe distance to avoid NaN when camera is exactly on player
-        const safeDist = Math.max(0.5, (camHit as any).toi * 0.9);
+        const safeDist = Math.max(1.0, (camHit as any).toi * 0.85);
         targetCamPos = playerPosVec
           .clone()
           .add(heightVec)
-          .add(camRayDir.multiplyScalar(safeDist));
+          .add(camRayDir.clone().multiplyScalar(safeDist));
       }
     }
 
-    // --- Black Screen / NaN Protection ---
+    // --- Smooth Camera Follow ---
     if (
       !isNaN(targetCamPos.x) &&
       !isNaN(targetCamPos.y) &&
       !isNaN(targetCamPos.z)
     ) {
-      renderer.camera.position.lerp(targetCamPos, 15 * delta);
+      const camLerp = 8 * delta;
+      smoothCamPos.lerp(targetCamPos, Math.min(camLerp, 1));
+      renderer.camera.position.copy(smoothCamPos);
 
       const lookTarget = playerPosVec.clone().add(heightVec);
-      if (!isNaN(lookTarget.x)) {
-        renderer.camera.lookAt(lookTarget);
+      smoothLookTarget.lerp(lookTarget, Math.min(12 * delta, 1));
+      if (!isNaN(smoothLookTarget.x)) {
+        renderer.camera.lookAt(smoothLookTarget);
       }
     }
 
-    // --- 3. Dynamic Movement Logic ---
+    // --- 3. Movement Logic ---
     const input = inputManager.getDirection();
     const currentVelocity = rigidBody.linvel();
+    const isSprinting = inputManager.getAction("sprint") > 0 && playerControl.oxygen > 0;
+    playerControl.isSprinting = isSprinting;
 
     // Calculate forward/right vectors based on camera yaw
     const forward = new THREE.Vector3(0, 0, -1).applyEuler(
@@ -142,38 +164,40 @@ export function updatePlayerControlSystem(delta: number) {
       moveDir.addScaledVector(right, input.x);
       moveDir.addScaledVector(forward, -input.z);
       moveDir.normalize();
-
-      // Wake up the physics body if it went to sleep while idle
       rigidBody.wakeUp();
     }
 
-    // Horizontal Velocity Lerping (Direct Physics Velocity Manipulation)
+    // Movement speed
+    const currentSpeed = isSprinting
+      ? playerControl.sprintSpeed
+      : playerControl.speed;
+
+    // Horizontal Velocity
     const targetHorizontalVel = moveDir
       .clone()
-      .multiplyScalar(playerControl.speed);
+      .multiplyScalar(currentSpeed);
     const currentHorizontalVel = new THREE.Vector3(
       currentVelocity.x,
       0,
       currentVelocity.z,
     );
 
-    // Snappy acceleration and tight friction (damping) when letting go of keys
-    const lerpSpeed = inputMagSq > 0 ? 10.0 : 20.0;
-    currentHorizontalVel.lerp(targetHorizontalVel, lerpSpeed * delta);
+    // Snappy acceleration, tighter deceleration
+    const lerpSpeed = inputMagSq > 0 ? 12.0 : 25.0;
+    currentHorizontalVel.lerp(targetHorizontalVel, Math.min(lerpSpeed * delta, 1));
 
-    // Vertical Velocity (Gravity/Jump) - Let Rapier handle gravity!
+    // Vertical Velocity
     let newYVel = currentVelocity.y;
 
-    // Ground Detection Raycast (Dynamic Bodies need an explicit ground check to jump)
+    // Ground Detection — more generous raycast
     const groundRay = new RAPIER.Ray(
-      { x: playerPosVec.x, y: playerPosVec.y + 0.1, z: playerPosVec.z }, // Start slightly above feet
+      { x: playerPosVec.x, y: playerPosVec.y, z: playerPosVec.z },
       { x: 0, y: -1, z: 0 },
     );
 
-    // Cast ray down up to 0.3 units (since ray starts 0.1 above bottom, this gives 0.2 tolerance)
     const groundHit = physicsManager.world.castRay(
       groundRay,
-      0.3,
+      1.0, // Longer ray for slope tolerance
       true,
       undefined,
       undefined,
@@ -181,19 +205,40 @@ export function updatePlayerControlSystem(delta: number) {
       rigidBody,
     );
 
-    // Grounded if hit something AND not moving upwards rapidly
-    playerControl.grounded = groundHit !== null && newYVel < 1.0;
+    // Grounded if ray hit within capsule half-height + tolerance
+    const groundThreshold = 0.95; // capsule half-height(0.5) + radius(0.3) + tolerance(0.15)
+    playerControl.grounded =
+      groundHit !== null &&
+      (groundHit as any).toi <= groundThreshold &&
+      newYVel < 2.0;
 
-    // Handle Jump
+    // Jump
     if (inputManager.getAction("jump") > 0 && playerControl.grounded) {
       newYVel = playerControl.jumpForce;
       playerControl.grounded = false;
       rigidBody.wakeUp();
+      events.emit("player:jump");
+    }
+    // Jetpack — hold Space while airborne, uses oxygen
+    else if (
+      inputManager.getAction("jump") > 0 &&
+      !playerControl.grounded &&
+      playerControl.oxygen > 0
+    ) {
+      const jetpackThrust = 6.0;
+      newYVel = Math.min(newYVel + jetpackThrust * delta, 8.0); // Cap upward speed
+      playerControl.oxygen = Math.max(
+        0,
+        playerControl.oxygen - 15 * delta, // Heavy oxygen cost
+      );
+      events.emit(
+        "player:oxygen:changed",
+        playerControl.oxygen,
+        playerControl.maxOxygen,
+      );
     }
 
-    // Apply the final velocity back to the Dynamic rigid body
-    // We explicitly overwrite X and Z, but we use the physics engine's simulated Y velocity (unless jumping).
-    // This perfectly prevents floating and lets the character naturally slide down slopes.
+    // Apply final velocity
     rigidBody.setLinvel(
       {
         x: currentHorizontalVel.x,
@@ -216,20 +261,18 @@ export function updatePlayerControlSystem(delta: number) {
       targetQuaternion.copy(object3d.userData.lastHeading);
     }
 
-    // Smoothly turn visual mesh to face movement direction
-    object3d.quaternion.slerp(targetQuaternion, 15 * delta);
+    // Smooth visual turn
+    object3d.quaternion.slerp(targetQuaternion, Math.min(15 * delta, 1));
 
     // --- 5. Animation ---
     if (animation) {
       const horizontalSpeed = currentHorizontalVel.length();
       let nextAction = "Idle";
 
-      // We check vertical velocity to determine if we are falling/jumping
-      if (!playerControl.grounded && Math.abs(newYVel) > 1.0) {
+      if (!playerControl.grounded && Math.abs(newYVel) > 1.5) {
         nextAction = "Jump";
       } else if (horizontalSpeed > 0.5) {
-        nextAction =
-          horizontalSpeed > playerControl.speed * 0.6 ? "Running" : "Walking";
+        nextAction = isSprinting && horizontalSpeed > 5.0 ? "Running" : "Walking";
       }
 
       if (animation.currentAction !== nextAction) {
@@ -242,7 +285,7 @@ export function updatePlayerControlSystem(delta: number) {
         }
       }
 
-      // Match animation speed to actual physical movement speed to eliminate sliding
+      // Match animation speed to physical movement speed
       animation.mixer.timeScale =
         nextAction === "Idle" ? 1.0 : Math.max(0.5, horizontalSpeed / 5.0);
       animation.mixer.update(delta);
