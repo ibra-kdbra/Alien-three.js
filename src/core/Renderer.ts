@@ -69,67 +69,6 @@ export class Renderer {
     );
     this.composer.addPass(bloomPass);
 
-    // Chromatic Aberration — subtle cinematic distortion
-    const chromaticShader = {
-      uniforms: {
-        tDiffuse: { value: null },
-        offset: { value: 0.0008 },
-      },
-      vertexShader: `
-        varying vec2 vUv;
-        void main() {
-          vUv = uv;
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        }
-      `,
-      fragmentShader: `
-        uniform sampler2D tDiffuse;
-        uniform float offset;
-        varying vec2 vUv;
-        void main() {
-          vec4 color = texture2D(tDiffuse, vUv);
-          float r = texture2D(tDiffuse, vUv + vec2(offset, 0.0)).r;
-          float b = texture2D(tDiffuse, vUv - vec2(offset, 0.0)).b;
-          gl_FragColor = vec4(r, color.g, b, color.a);
-        }
-      `,
-    };
-    const chromaticPass = new ShaderPass(chromaticShader);
-    this.composer.addPass(chromaticPass);
-
-    // Film grain — cinematic texture
-    const filmGrainShader = {
-      uniforms: {
-        tDiffuse: { value: null },
-        time: { value: 0.0 },
-        intensity: { value: 0.04 },
-      },
-      vertexShader: `
-        varying vec2 vUv;
-        void main() {
-          vUv = uv;
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        }
-      `,
-      fragmentShader: `
-        uniform sampler2D tDiffuse;
-        uniform float time;
-        uniform float intensity;
-        varying vec2 vUv;
-        float rand(vec2 co) {
-          return fract(sin(dot(co, vec2(12.9898, 78.233))) * 43758.5453);
-        }
-        void main() {
-          vec4 color = texture2D(tDiffuse, vUv);
-          float grain = rand(vUv + time) * intensity;
-          color.rgb += grain - intensity * 0.5;
-          gl_FragColor = color;
-        }
-      `,
-    };
-    this.filmGrainPass = new ShaderPass(filmGrainShader);
-    this.composer.addPass(this.filmGrainPass);
-
     // FXAA — smooth edges
     const fxaaPass = new ShaderPass(FXAAShader);
     const pixelRatio = this.renderer.getPixelRatio();
@@ -147,7 +86,6 @@ export class Renderer {
     window.addEventListener("resize", this.onResize.bind(this));
   }
 
-  private filmGrainPass: ShaderPass;
   private fxaaPass: ShaderPass;
   private elapsed = 0;
 
@@ -167,7 +105,6 @@ export class Renderer {
   public render(delta?: number) {
     if (delta) {
       this.elapsed += delta;
-      this.filmGrainPass.uniforms["time"].value = this.elapsed;
     }
     this.composer.render();
   }
