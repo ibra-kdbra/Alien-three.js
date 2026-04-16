@@ -35,11 +35,31 @@ export function updateOxygenSystem(delta: number) {
       }
     }
 
-    // Apply drain
-    playerControl.oxygen = Math.max(
-      0,
-      playerControl.oxygen - drainRate * delta,
-    );
+    // Beacon (Refuel Station) proximity refill
+    let isRefueling = false;
+    for (const beacon of queries.beacons) {
+      if (!beacon.beacon || !beacon.object3d) continue;
+      // Define a refuel radius (e.g., 5 units)
+      const dist = playerPos.distanceTo(beacon.object3d.position);
+      if (dist < 4.0) {
+        isRefueling = true;
+        break; // Only need one beacon to refuel
+      }
+    }
+
+    if (isRefueling) {
+        // Rapid refill while inside refuel station
+        playerControl.oxygen = Math.min(
+            playerControl.maxOxygen,
+            playerControl.oxygen + 30.0 * delta,
+        );
+    } else {
+        // Apply drain
+        playerControl.oxygen = Math.max(
+          0,
+          playerControl.oxygen - drainRate * delta,
+        );
+    }
 
     // Emit update
     events.emit(
