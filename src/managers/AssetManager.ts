@@ -45,8 +45,8 @@ export class AssetManager {
   public async loadAllAssets(): Promise<void> {
     const promises = [
       this.loadModel("robot", "/models/player/robot.glb"),
-      this.loadTexture("terrain_diffuse", "/textures/planet/alien_diffuse.jpg"),
-      this.loadTexture("terrain_normal", "/textures/planet/alien_normal.jpg"),
+      this.loadTexture("terrain_diffuse", "/textures/planet/mars_diffuse.png"),
+      this.loadTexture("terrain_normal", "/textures/planet/mars_normal.png"),
     ];
 
     await Promise.all(promises);
