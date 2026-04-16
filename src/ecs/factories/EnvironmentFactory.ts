@@ -26,7 +26,7 @@ export function getTerrainHeight(x: number, z: number): number {
 
 export function createEnvironment(size: number) {
   // 1. Create Terrain with rolling hills
-  const detail = 150; // Higher resolution for smoother terrain
+  const detail = 90; // Reduced resolution for performance
   let geometry = new THREE.PlaneGeometry(size, size, detail, detail);
   geometry.rotateX(-Math.PI / 2); // Lay flat on X/Z plane
   geometry = mergeVertices(geometry) as THREE.PlaneGeometry;
