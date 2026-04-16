@@ -144,50 +144,10 @@ export function updatePlayerControlSystem(delta: number) {
       }
     }
 
-    // --- 3. Movement Logic ---
+    // --- 3. Movement Logic (Physics Based) ---
     const input = inputManager.getDirection();
-    const currentVelocity = rigidBody.linvel();
     const isSprinting = inputManager.getAction("sprint") > 0 && playerControl.oxygen > 0;
     playerControl.isSprinting = isSprinting;
-
-    // Calculate forward/right vectors based on camera yaw
-    const forward = new THREE.Vector3(0, 0, -1).applyEuler(
-      new THREE.Euler(0, playerControl.yaw, 0),
-    );
-    const right = new THREE.Vector3(1, 0, 0).applyEuler(
-      new THREE.Euler(0, playerControl.yaw, 0),
-    );
-
-    const moveDir = new THREE.Vector3();
-    const inputMagSq = input.x * input.x + input.z * input.z;
-    if (inputMagSq > 0) {
-      moveDir.addScaledVector(right, input.x);
-      moveDir.addScaledVector(forward, -input.z);
-      moveDir.normalize();
-      rigidBody.wakeUp();
-    }
-
-    // Movement speed
-    const currentSpeed = isSprinting
-      ? playerControl.sprintSpeed
-      : playerControl.speed;
-
-    // Horizontal Velocity
-    const targetHorizontalVel = moveDir
-      .clone()
-      .multiplyScalar(currentSpeed);
-    const currentHorizontalVel = new THREE.Vector3(
-      currentVelocity.x,
-      0,
-      currentVelocity.z,
-    );
-
-    // Snappy acceleration, tighter deceleration
-    const lerpSpeed = inputMagSq > 0 ? 12.0 : 25.0;
-    currentHorizontalVel.lerp(targetHorizontalVel, Math.min(lerpSpeed * delta, 1));
-
-    // Vertical Velocity
-    let newYVel = currentVelocity.y;
 
     // Ground Detection — more generous raycast
     const groundRay = new RAPIER.Ray(
@@ -209,15 +169,69 @@ export function updatePlayerControlSystem(delta: number) {
     const groundThreshold = 0.95; // capsule half-height(0.5) + radius(0.3) + tolerance(0.15)
     playerControl.grounded =
       groundHit !== null &&
-      (groundHit as any).toi <= groundThreshold &&
-      newYVel < 2.0;
+      (groundHit as any).toi <= groundThreshold;
+
+    // Calculate forward/right vectors based on camera yaw
+    const forward = new THREE.Vector3(0, 0, -1).applyEuler(
+      new THREE.Euler(0, playerControl.yaw, 0),
+    );
+    const right = new THREE.Vector3(1, 0, 0).applyEuler(
+      new THREE.Euler(0, playerControl.yaw, 0),
+    );
+
+    const moveDir = new THREE.Vector3();
+    const inputMagSq = input.x * input.x + input.z * input.z;
+    if (inputMagSq > 0) {
+      moveDir.addScaledVector(right, input.x);
+      moveDir.addScaledVector(forward, -input.z);
+      moveDir.normalize();
+      rigidBody.wakeUp();
+    }
+
+    // Movement speed / force
+    const currentSpeed = isSprinting
+      ? playerControl.sprintSpeed
+      : playerControl.speed;
+
+    // Realistic physics: Air control is less effective than ground control
+    const controlMultiplier = playerControl.grounded ? 1.0 : 0.3;
+    const forceMagnitude = currentSpeed * 10.0 * controlMultiplier * delta; // Arbitrary scale factor for impulse
+
+    const currentVelocity = rigidBody.linvel();
+    const currentHorizontalVel = new THREE.Vector3(
+      currentVelocity.x,
+      0,
+      currentVelocity.z,
+    );
+    
+    // Apply movement impulse
+    if (inputMagSq > 0) {
+        // Limit max horizontal speed
+        if (currentHorizontalVel.length() < currentSpeed) {
+            rigidBody.applyImpulse({ x: moveDir.x * forceMagnitude, y: 0, z: moveDir.z * forceMagnitude }, true);
+        }
+    } else if (playerControl.grounded) {
+        // Friction: Apply counter-impulse when no input on ground
+        rigidBody.applyImpulse({ x: -currentVelocity.x * 0.2, y: 0, z: -currentVelocity.z * 0.2 }, true);
+    }
+
+    // Extra downward force when falling to prevent "floaty" gravity feel
+    if (!playerControl.grounded && currentVelocity.y < 0) {
+        rigidBody.applyImpulse({ x: 0, y: -2.0 * delta, z: 0 }, true);
+    }
 
     // Jump
-    if (inputManager.getAction("jump") > 0 && playerControl.grounded) {
-      newYVel = playerControl.jumpForce;
+    const jumpCooldown = (player as any)._jumpCooldown || 0;
+    if (jumpCooldown > 0) {
+        (player as any)._jumpCooldown -= delta;
+    }
+
+    if (inputManager.getAction("jump") > 0 && playerControl.grounded && jumpCooldown <= 0) {
+      rigidBody.applyImpulse({ x: 0, y: playerControl.jumpForce * 3.0, z: 0 }, true);
       playerControl.grounded = false;
       rigidBody.wakeUp();
       events.emit("player:jump");
+      (player as any)._jumpCooldown = 0.5; // Prevent rapid jumping
     }
     // Jetpack — hold Space while airborne, uses oxygen
     else if (
@@ -225,8 +239,11 @@ export function updatePlayerControlSystem(delta: number) {
       !playerControl.grounded &&
       playerControl.oxygen > 0
     ) {
-      const jetpackThrust = 6.0;
-      newYVel = Math.min(newYVel + jetpackThrust * delta, 8.0); // Cap upward speed
+      const jetpackThrust = 10.0 * delta;
+      // Cap max upward velocity
+      if (currentVelocity.y < 8.0) {
+          rigidBody.applyImpulse({ x: 0, y: jetpackThrust, z: 0 }, true);
+      }
       playerControl.oxygen = Math.max(
         0,
         playerControl.oxygen - 15 * delta, // Heavy oxygen cost
@@ -237,16 +254,6 @@ export function updatePlayerControlSystem(delta: number) {
         playerControl.maxOxygen,
       );
     }
-
-    // Apply final velocity
-    rigidBody.setLinvel(
-      {
-        x: currentHorizontalVel.x,
-        y: newYVel,
-        z: currentHorizontalVel.z,
-      },
-      true,
-    );
 
     // --- 4. Visual Orientation ---
     const targetQuaternion = new THREE.Quaternion();
