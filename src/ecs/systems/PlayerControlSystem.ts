@@ -276,7 +276,7 @@ export function updatePlayerControlSystem(delta: number) {
       const horizontalSpeed = currentHorizontalVel.length();
       let nextAction = "Idle";
 
-      if (!playerControl.grounded && Math.abs(newYVel) > 1.5) {
+      if (!playerControl.grounded && Math.abs(currentVelocity.y) > 1.5) {
         nextAction = "Jump";
       } else if (horizontalSpeed > 0.5) {
         nextAction = isSprinting && horizontalSpeed > 5.0 ? "Running" : "Walking";
