@@ -5,6 +5,8 @@ import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js"
 import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
 import { FXAAShader } from "three/addons/shaders/FXAAShader.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
+import chromaticFragmentShader from "../shaders/chromatic.fragment.glsl?raw";
+import { queries } from "../ecs/World";
 
 export class Renderer {
   public renderer: THREE.WebGLRenderer;
@@ -79,6 +81,24 @@ export class Renderer {
     this.fxaaPass = fxaaPass;
     this.composer.addPass(fxaaPass);
 
+    // Chromatic Aberration — warning effect on low oxygen
+    const chromaticShader = {
+      uniforms: {
+        tDiffuse: { value: null },
+        offset: { value: 0.0 },
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: chromaticFragmentShader,
+    };
+    this.chromaticPass = new ShaderPass(chromaticShader);
+    this.composer.addPass(this.chromaticPass);
+
     // Output pass (color space)
     const outputPass = new OutputPass();
     this.composer.addPass(outputPass);
@@ -87,6 +107,7 @@ export class Renderer {
   }
 
   private fxaaPass: ShaderPass;
+  private chromaticPass: ShaderPass;
   private elapsed = 0;
 
   private onResize() {
@@ -106,6 +127,25 @@ export class Renderer {
     if (delta) {
       this.elapsed += delta;
     }
+
+    // Dynamic Chromatic Aberration based on Player Suit Oxygen
+    if (this.chromaticPass) {
+      const playerEntity = queries.player.entities[0];
+      if (playerEntity && playerEntity.playerControl) {
+        const oxygenPercent = playerEntity.playerControl.oxygen / playerEntity.playerControl.maxOxygen;
+        if (oxygenPercent < 0.3) {
+          // Warning threshold: Pulse offset as a rhythmic warning heartbeat
+          const intensity = 1.0 - (oxygenPercent / 0.3); // 0 at 30%, 1 at 0%
+          const pulse = 0.5 + Math.sin(this.elapsed * 10.0) * 0.5; // fast warning pulse
+          this.chromaticPass.uniforms["offset"].value = intensity * 0.006 * pulse;
+        } else {
+          this.chromaticPass.uniforms["offset"].value = 0.0;
+        }
+      } else {
+        this.chromaticPass.uniforms["offset"].value = 0.0;
+      }
+    }
+
     this.composer.render();
   }
 }
