@@ -11,8 +11,8 @@ export class PhysicsManager {
   public async init() {
     await RAPIER.init();
 
-    // Realistic Earth-like gravity
-    const gravity = { x: 0.0, y: -9.81, z: 0.0 };
+    // Low gravity alien planet
+    const gravity = { x: 0.0, y: -3.5, z: 0.0 };
     this.world = new RAPIER.World(gravity);
 
     this.isInitialized = true;
