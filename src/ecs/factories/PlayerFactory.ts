@@ -76,7 +76,7 @@ export function createPlayer(position: { x: number; y: number; z: number }) {
     playerControl: {
       speed: 8.0,
       sprintSpeed: 14.0,
-      jumpForce: 7.0,
+      jumpForce: 5.8,
       grounded: false,
       velocity: { x: 0, y: 0, z: 0 },
       oxygen: 100,
