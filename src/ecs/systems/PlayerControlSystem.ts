@@ -193,32 +193,20 @@ export function updatePlayerControlSystem(delta: number) {
       ? playerControl.sprintSpeed
       : playerControl.speed;
 
-    // Realistic physics: Air control is less effective than ground control
-    const controlMultiplier = playerControl.grounded ? 1.0 : 0.3;
-    const forceMagnitude = currentSpeed * 10.0 * controlMultiplier * delta; // Arbitrary scale factor for impulse
-
     const currentVelocity = rigidBody.linvel();
-    const currentHorizontalVel = new THREE.Vector3(
-      currentVelocity.x,
-      0,
-      currentVelocity.z,
-    );
     
-    // Apply movement impulse
-    if (inputMagSq > 0) {
-        // Limit max horizontal speed
-        if (currentHorizontalVel.length() < currentSpeed) {
-            rigidBody.applyImpulse({ x: moveDir.x * forceMagnitude, y: 0, z: moveDir.z * forceMagnitude }, true);
-        }
-    } else if (playerControl.grounded) {
-        // Friction: Apply counter-impulse when no input on ground
-        rigidBody.applyImpulse({ x: -currentVelocity.x * 0.2, y: 0, z: -currentVelocity.z * 0.2 }, true);
-    }
+    // Target horizontal velocity
+    const targetVelX = inputMagSq > 0 ? moveDir.x * currentSpeed : 0;
+    const targetVelZ = inputMagSq > 0 ? moveDir.z * currentSpeed : 0;
 
-    // Extra downward force when falling to prevent "floaty" gravity feel
-    if (!playerControl.grounded && currentVelocity.y < 0) {
-        rigidBody.applyImpulse({ x: 0, y: -2.0 * delta, z: 0 }, true);
-    }
+    // Smooth movement using direct velocity lerping (frictionless feel with precise control)
+    // Ground acceleration is snappy (15.0), air control is floaty (4.0)
+    const accel = playerControl.grounded ? 15.0 : 4.0;
+    const newVelX = THREE.MathUtils.lerp(currentVelocity.x, targetVelX, accel * delta);
+    const newVelZ = THREE.MathUtils.lerp(currentVelocity.z, targetVelZ, accel * delta);
+
+    // Apply linear velocity
+    rigidBody.setLinvel({ x: newVelX, y: currentVelocity.y, z: newVelZ }, true);
 
     // Jump
     const jumpCooldown = (player as any)._jumpCooldown || 0;
@@ -227,11 +215,12 @@ export function updatePlayerControlSystem(delta: number) {
     }
 
     if (inputManager.getAction("jump") > 0 && playerControl.grounded && jumpCooldown <= 0) {
-      rigidBody.applyImpulse({ x: 0, y: playerControl.jumpForce * 3.0, z: 0 }, true);
+      // Direct jump velocity for consistent and satisfying low-gravity leap
+      rigidBody.setLinvel({ x: newVelX, y: playerControl.jumpForce, z: newVelZ }, true);
       playerControl.grounded = false;
       rigidBody.wakeUp();
       events.emit("player:jump");
-      (player as any)._jumpCooldown = 0.5; // Prevent rapid jumping
+      (player as any)._jumpCooldown = 0.4; // Prevent rapid jumping
     }
     // Jetpack — hold Space while airborne, uses oxygen
     else if (
@@ -239,14 +228,14 @@ export function updatePlayerControlSystem(delta: number) {
       !playerControl.grounded &&
       playerControl.oxygen > 0
     ) {
-      const jetpackThrust = 10.0 * delta;
-      // Cap max upward velocity
-      if (currentVelocity.y < 8.0) {
-          rigidBody.applyImpulse({ x: 0, y: jetpackThrust, z: 0 }, true);
-      }
+      // Smooth vertical thrust in low gravity
+      const targetJetpackY = 4.5;
+      const newVelY = THREE.MathUtils.lerp(currentVelocity.y, targetJetpackY, 6.0 * delta);
+      rigidBody.setLinvel({ x: newVelX, y: newVelY, z: newVelZ }, true);
+
       playerControl.oxygen = Math.max(
         0,
-        playerControl.oxygen - 15 * delta, // Heavy oxygen cost
+        playerControl.oxygen - 12 * delta, // Slightly more generous oxygen cost for better gameplay
       );
       events.emit(
         "player:oxygen:changed",
@@ -273,7 +262,10 @@ export function updatePlayerControlSystem(delta: number) {
 
     // --- 5. Animation ---
     if (animation) {
-      const horizontalSpeed = currentHorizontalVel.length();
+      const horizontalSpeed = Math.sqrt(
+        currentVelocity.x * currentVelocity.x +
+        currentVelocity.z * currentVelocity.z
+      );
       let nextAction = "Idle";
 
       if (!playerControl.grounded && Math.abs(currentVelocity.y) > 1.5) {
