@@ -1,0 +1,163 @@
+import * as THREE from "three";
+import { world } from "../World";
+import { renderer } from "../../core/Renderer";
+import { physicsManager } from "../../managers/PhysicsManager";
+import { getPlanetHeight } from "./PlanetFactory";
+import RAPIER from "@dimforge/rapier3d-compat";
+
+/**
+ * Creates the Sci-Fi Landing Pad and the procedurally constructed Dropship at the North Pole.
+ */
+export function createLandingZone(planetRadius: number) {
+  const spawnDir = new THREE.Vector3(0, 1, 0); // North Pole
+  const height = getPlanetHeight(spawnDir, planetRadius);
+  const position = spawnDir.clone().multiplyScalar(height);
+
+  const padGroup = new THREE.Group();
+  padGroup.position.copy(position);
+
+  // 1. Landing Pad Cylinder Mesh
+  const padGeo = new THREE.CylinderGeometry(8.0, 8.5, 0.5, 32);
+  const padMat = new THREE.MeshStandardMaterial({
+    color: 0x22252a,
+    roughness: 0.8,
+    metalness: 0.6,
+  });
+  const padMesh = new THREE.Mesh(padGeo, padMat);
+  padMesh.receiveShadow = true;
+  padMesh.castShadow = true;
+  padGroup.add(padMesh);
+
+  // Neon glowing ring around the pad
+  const ringGeo = new THREE.TorusGeometry(7.8, 0.08, 8, 48);
+  const ringMat = new THREE.MeshBasicMaterial({
+    color: 0x00ffcc,
+    transparent: true,
+    opacity: 0.6,
+  });
+  const ring = new THREE.Mesh(ringGeo, ringMat);
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.y = 0.26;
+  padGroup.add(ring);
+
+  // 2. Procedural Dropship Model Group
+  const shipGroup = new THREE.Group();
+  shipGroup.position.y = 0.25; // Sits on top of the landing pad
+
+  // Cabin
+  const cabinGeo = new THREE.BoxGeometry(3.0, 2.0, 5.0);
+  const cabinMat = new THREE.MeshStandardMaterial({
+    color: 0x444d5a,
+    roughness: 0.4,
+    metalness: 0.8,
+  });
+  const cabin = new THREE.Mesh(cabinGeo, cabinMat);
+  cabin.position.y = 1.0;
+  cabin.castShadow = true;
+  shipGroup.add(cabin);
+
+  // Blue cockpit glass visor
+  const visorGeo = new THREE.BoxGeometry(2.4, 0.8, 1.2);
+  const visorMat = new THREE.MeshStandardMaterial({
+    color: 0x00aaff,
+    emissive: 0x0055aa,
+    roughness: 0.1,
+    metalness: 0.9,
+  });
+  const visor = new THREE.Mesh(visorGeo, visorMat);
+  visor.position.set(0, 1.2, 2.0);
+  visor.castShadow = true;
+  shipGroup.add(visor);
+
+  // Left & Right Wings
+  const wingGeo = new THREE.BoxGeometry(1.2, 0.6, 3.5);
+  const wingMat = new THREE.MeshStandardMaterial({
+    color: 0x2b323d,
+    roughness: 0.5,
+    metalness: 0.8,
+  });
+  const leftWing = new THREE.Mesh(wingGeo, wingMat);
+  leftWing.position.set(-2.0, 0.8, -0.5);
+  leftWing.castShadow = true;
+  shipGroup.add(leftWing);
+
+  const rightWing = leftWing.clone();
+  rightWing.position.x = 2.0;
+  shipGroup.add(rightWing);
+
+  // Left & Right Engine Boosters
+  const engGeo = new THREE.CylinderGeometry(0.7, 0.7, 2.2, 16);
+  const engMat = new THREE.MeshStandardMaterial({
+    color: 0x181c22,
+    roughness: 0.6,
+    metalness: 0.9,
+  });
+  const leftEng = new THREE.Mesh(engGeo, engMat);
+  leftEng.rotation.x = -Math.PI / 2;
+  leftEng.position.set(-2.0, 0.8, -1.8);
+  leftEng.castShadow = true;
+  shipGroup.add(leftEng);
+
+  const rightEng = leftEng.clone();
+  rightEng.position.x = 2.0;
+  shipGroup.add(rightEng);
+
+  // Rocket Nozzles
+  const nozzleGeo = new THREE.CylinderGeometry(0.5, 0.4, 0.4, 16);
+  const nozzleMat = new THREE.MeshBasicMaterial({
+    color: 0x0f3b4c, // Dim blue at start (off)
+  });
+  const leftNozzle = new THREE.Mesh(nozzleGeo, nozzleMat);
+  leftNozzle.rotation.x = -Math.PI / 2;
+  leftNozzle.position.set(-2.0, 0.8, -3.0);
+  shipGroup.add(leftNozzle);
+
+  const rightNozzle = leftNozzle.clone();
+  rightNozzle.position.x = 2.0;
+  shipGroup.add(rightNozzle);
+
+  // Glowing Point Lights for engine exhaust (initially off)
+  const leftLight = new THREE.PointLight(0x00ffcc, 0, 10);
+  leftLight.position.set(-2.0, 0.8, -3.5);
+  shipGroup.add(leftLight);
+
+  const rightLight = leftLight.clone();
+  rightLight.position.x = 2.0;
+  shipGroup.add(rightLight);
+
+  padGroup.add(shipGroup);
+  renderer.scene.add(padGroup);
+
+  // Store references in userData for animation / activation checks
+  shipGroup.userData = {
+    leftNozzle,
+    rightNozzle,
+    leftLight,
+    rightLight,
+  };
+
+  // 3. Fixed physical collider for the landing pad
+  const rigidBodyDesc = RAPIER.RigidBodyDesc.fixed().setTranslation(
+    position.x,
+    position.y,
+    position.z,
+  );
+  const rigidBody = physicsManager.world.createRigidBody(rigidBodyDesc);
+
+  const padIndices = new Uint32Array(padMesh.geometry.getIndex()!.array);
+  const padVertices = new Float32Array(padMesh.geometry.getAttribute("position").array);
+  const colliderDesc = RAPIER.ColliderDesc.trimesh(padVertices, padIndices);
+  physicsManager.world.createCollider(colliderDesc, rigidBody);
+
+  return world.add({
+    name: "Dropship",
+    isDropship: true,
+    object3d: padGroup,
+    rigidBody,
+    dropship: {
+      activated: false,
+      extractionActive: false,
+      landingPadPos: { x: position.x, y: position.y, z: position.z },
+    },
+  });
+}
