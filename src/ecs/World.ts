@@ -20,4 +20,7 @@ export const queries = {
 
   // Hazards
   hazards: world.with("isHazard", "object3d", "hazard"),
+
+  // Dropships
+  dropships: world.with("isDropship", "object3d", "dropship"),
 };
