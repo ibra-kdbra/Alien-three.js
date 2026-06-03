@@ -1,8 +1,9 @@
 import { engine } from "./core/Engine";
 import { createPlayer } from "./ecs/factories/PlayerFactory";
-import { createEnvironment, getTerrainHeight } from "./ecs/factories/EnvironmentFactory";
+import { createPlanet, getPlanetHeight } from "./ecs/factories/PlanetFactory";
 import { createBeacons } from "./ecs/factories/BeaconFactory";
 import { createHazards } from "./ecs/factories/HazardFactory";
+import { createLandingZone } from "./ecs/factories/DropshipFactory";
 import { initParticleSystem } from "./ecs/systems/ParticleSystem";
 import * as THREE from "three";
 import { renderer } from "./core/Renderer";
@@ -17,10 +18,10 @@ import skyboxVertexShader from "./shaders/skybox.vertex.glsl?raw";
 import skyboxFragmentShader from "./shaders/skybox.fragment.glsl?raw";
 
 /**
- * Scatter rock formations across the terrain.
- * Uses varied shapes and proper terrain placement.
+ * Scatter rock formations across the spherical surface.
+ * Uses varied shapes and proper normal-aligned terrain placement.
  */
-function createWorldClutter(size: number) {
+function createWorldClutter(planetRadius: number) {
   const count = 200;
 
   // Multiple rock shapes for variety
@@ -45,21 +46,30 @@ function createWorldClutter(size: number) {
     const mesh = new THREE.InstancedMesh(geo, material, rocksPerType);
 
     for (let i = 0; i < rocksPerType; i++) {
-      // Distribute across the map, biased away from center (player spawn)
-      let x, z;
+      // Pick a random direction on the sphere
+      let dir;
       do {
-        x = (Math.random() - 0.5) * size * 0.85;
-        z = (Math.random() - 0.5) * size * 0.85;
-      } while (Math.abs(x) < 15 && Math.abs(z) < 15); // Keep spawn area clear
+        dir = new THREE.Vector3(
+          Math.random() - 0.5,
+          Math.random() - 0.5,
+          Math.random() - 0.5
+        ).normalize();
+        // Keep the spawn area clear (spawn is at North Pole direction (0, 1, 0))
+      } while (dir.dot(new THREE.Vector3(0, 1, 0)) > 0.95);
 
-      const y = getTerrainHeight(x, z);
+      const height = getPlanetHeight(dir, planetRadius);
+      const pos = dir.clone().multiplyScalar(height);
 
-      dummy.position.set(x, y - 0.3, z);
-      dummy.rotation.set(
-        Math.random() * Math.PI * 0.3,
-        Math.random() * Math.PI * 2,
-        Math.random() * Math.PI * 0.3,
-      );
+      // Align the rock to stand upright along the normal
+      dummy.position.set(pos.x, pos.y, pos.z);
+      
+      const uprightQuat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+      dummy.quaternion.copy(uprightQuat);
+      
+      // Add random local spin
+      dummy.rotateY(Math.random() * Math.PI * 2);
+      dummy.rotateX((Math.random() - 0.5) * 0.3);
+      dummy.rotateZ((Math.random() - 0.5) * 0.3);
 
       const scale = 0.4 + Math.random() * 2.5;
       dummy.scale.setScalar(scale);
@@ -68,7 +78,11 @@ function createWorldClutter(size: number) {
 
       // Physical collider for each rock
       const rockRadius = scale * 0.8;
-      const rigidBodyDesc = RAPIER.RigidBodyDesc.fixed().setTranslation(x, y, z);
+      
+      // Rapier collider description aligned to normal
+      const rigidBodyDesc = RAPIER.RigidBodyDesc.fixed()
+        .setTranslation(pos.x, pos.y, pos.z)
+        .setRotation(uprightQuat);
       const rockBody = physicsManager.world.createRigidBody(rigidBodyDesc);
       const colliderDesc = RAPIER.ColliderDesc.ball(rockRadius);
       physicsManager.world.createCollider(colliderDesc, rockBody);
@@ -137,21 +151,24 @@ async function bootstrap() {
   const skybox = new THREE.Mesh(skyboxGeo, skyboxMat);
   renderer.scene.add(skybox);
 
-  // --- World Generation ---
-  const mapSize = 500;
-  createEnvironment(mapSize);
-  createWorldClutter(mapSize);
+  // --- World Generation (Spherical Planet) ---
+  const planetRadius = 120;
+  createPlanet({ x: 0, y: 0, z: 0 }, planetRadius);
+  createLandingZone(planetRadius);
+  createWorldClutter(planetRadius);
 
   // Gameplay entities
-  createBeacons(mapSize, getTerrainHeight);
-  createHazards(mapSize, getTerrainHeight);
+  createBeacons(planetRadius, getPlanetHeight);
+  createHazards(planetRadius, getPlanetHeight);
 
   // Initialize particles
   initParticleSystem();
 
-  // Spawn player on terrain surface
-  const spawnY = getTerrainHeight(0, 0) + 3;
-  createPlayer({ x: 0, y: spawnY, z: 0 });
+  // Spawn player on terrain surface near the dropship on the landing pad
+  const spawnDir = new THREE.Vector3(0.03, 1.0, 0.0).normalize();
+  const spawnDist = getPlanetHeight(spawnDir, planetRadius) + 1.2;
+  const spawnPos = spawnDir.clone().multiplyScalar(spawnDist);
+  createPlayer({ x: spawnPos.x, y: spawnPos.y, z: spawnPos.z });
 
   console.log("ASTRA: LOST SIGNAL — Game initialized");
 }
