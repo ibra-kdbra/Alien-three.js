@@ -8,6 +8,7 @@ import { updateBeaconSystem } from "../ecs/systems/BeaconSystem";
 import { updateOxygenSystem } from "../ecs/systems/OxygenSystem";
 import { updateHazardVisuals } from "../ecs/factories/HazardFactory";
 import { updateParticleSystem } from "../ecs/systems/ParticleSystem";
+import { updateDropshipSystem } from "../ecs/systems/DropshipSystem";
 import { inputManager } from "../managers/InputManager";
 import { debugManager } from "../managers/DebugManager";
 
@@ -49,6 +50,7 @@ export class Engine {
     // 2. Gameplay Systems
     updateBeaconSystem(delta, elapsed);
     updateOxygenSystem(delta);
+    updateDropshipSystem(delta, elapsed);
 
     // 3. Physics Step (fixed timestep)
     physicsManager.step(delta);
