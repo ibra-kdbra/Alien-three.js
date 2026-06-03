@@ -21,6 +21,13 @@ export type Entity = {
   isPlanet?: boolean;
   isBeacon?: boolean;
   isHazard?: boolean;
+  isDropship?: boolean;
+
+  dropship?: {
+    activated: boolean;
+    extractionActive: boolean;
+    landingPadPos: { x: number; y: number; z: number };
+  };
 
   // Data components
   health?: { current: number; max: number };
@@ -38,6 +45,7 @@ export type Entity = {
     isSprinting?: boolean;
     jetpackFuel?: number;
     cameraDistance?: number;
+    isJetpacking?: boolean;
   };
 
   // Beacon data
