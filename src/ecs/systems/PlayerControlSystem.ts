@@ -6,9 +6,18 @@ import { physicsManager } from "../../managers/PhysicsManager";
 import { events } from "../../utils/EventBus";
 import RAPIER from "@dimforge/rapier3d-compat";
 
-// Smooth camera follow state
-let smoothCamPos = new THREE.Vector3(0, 10, 15);
-let smoothLookTarget = new THREE.Vector3();
+
+
+// Spherical camera rig groups
+let cameraRig: THREE.Group | null = null;
+let cameraPivot: THREE.Group | null = null;
+
+// Sonar scanner state
+let scannerMesh: THREE.Mesh | null = null;
+let scannerScale = 0.1;
+let scannerActive = false;
+let scannerCooldown = 0;
+const SCANNER_MAX_RADIUS = 80;
 
 export function updatePlayerControlSystem(delta: number) {
   for (const player of queries.player) {
@@ -23,7 +32,7 @@ export function updatePlayerControlSystem(delta: number) {
       currentPos.y,
       currentPos.z,
     );
-    const upVector = new THREE.Vector3(0, 1, 0);
+
 
     // --- 2. Camera Mode & Input ---
     if (playerControl.yaw === undefined) playerControl.yaw = 0;
@@ -84,30 +93,43 @@ export function updatePlayerControlSystem(delta: number) {
     );
     renderer.camera.updateProjectionMatrix();
 
-    // Camera orbit calculation
-    const camRotation = new THREE.Euler(
-      playerControl.pitch,
-      playerControl.yaw,
-      0,
-      "YXZ",
-    );
-    const camOffset = new THREE.Vector3(0, 0, targetCamDist).applyEuler(
-      camRotation,
-    );
-    const heightVec = new THREE.Vector3(0, 1.8, 0);
+    // --- Camera Rig Setup & Alignment ---
+    if (!cameraRig || !cameraPivot) {
+      cameraRig = new THREE.Group();
+      cameraPivot = new THREE.Group();
+      renderer.scene.add(cameraRig);
+      cameraRig.add(cameraPivot);
+      cameraPivot.add(renderer.camera);
+      
+      // Position camera inside the pivot locally
+      renderer.camera.position.set(0, 1.8, targetCamDist);
+    }
 
-    let targetCamPos = playerPosVec.clone().add(heightVec).add(camOffset);
+    // Outward normal vector from the center of the planet
+    const normal = playerPosVec.clone().normalize();
+
+    // Position rig at player position
+    cameraRig.position.copy(playerPosVec);
+
+    // Smoothly align camera rig UP with planet normal to prevent camera flipping at poles
+    const rigUp = new THREE.Vector3(0, 1, 0).applyQuaternion(cameraRig.quaternion);
+    const alignQuat = new THREE.Quaternion().setFromUnitVectors(rigUp, normal);
+    cameraRig.quaternion.premultiply(alignQuat);
+
+    // Apply mouse look yaw and pitch locally on the pivot
+    cameraPivot.rotation.set(playerControl.pitch, playerControl.yaw, 0, "YXZ");
 
     // Camera Collision (Raycast)
-    const camRayDir = camOffset.clone().normalize();
+    const targetCamLocalPos = new THREE.Vector3(0, 1.8, targetCamDist);
+    const targetCamWorldPos = targetCamLocalPos.clone().applyMatrix4(cameraPivot.matrixWorld);
+    const camRayOrigin = playerPosVec.clone().addScaledVector(normal, 1.8);
+    const camRayDir = targetCamWorldPos.clone().sub(camRayOrigin).normalize();
+    
+    let finalCamDist = targetCamDist;
     if (camRayDir.lengthSq() > 0.001) {
       const camRay = new RAPIER.Ray(
-        {
-          x: playerPosVec.x,
-          y: playerPosVec.y + heightVec.y,
-          z: playerPosVec.z,
-        },
-        { x: camRayDir.x, y: camRayDir.y, z: camRayDir.z },
+        { x: camRayOrigin.x, y: camRayOrigin.y, z: camRayOrigin.z },
+        { x: camRayDir.x, y: camRayDir.y, z: camRayDir.z }
       );
       const camHit = physicsManager.world.castRay(
         camRay,
@@ -116,48 +138,32 @@ export function updatePlayerControlSystem(delta: number) {
         undefined,
         undefined,
         undefined,
-        rigidBody,
+        rigidBody
       );
       if (camHit) {
-        const safeDist = Math.max(1.0, (camHit as any).toi * 0.85);
-        targetCamPos = playerPosVec
-          .clone()
-          .add(heightVec)
-          .add(camRayDir.clone().multiplyScalar(safeDist));
+        finalCamDist = Math.max(1.0, (camHit as any).toi * 0.85);
       }
     }
+    
+    // Set final local position and camera look-at
+    renderer.camera.position.set(0, 1.8, finalCamDist);
+    renderer.camera.lookAt(new THREE.Vector3(0, 1.8, 0));
 
-    // --- Smooth Camera Follow ---
-    if (
-      !isNaN(targetCamPos.x) &&
-      !isNaN(targetCamPos.y) &&
-      !isNaN(targetCamPos.z)
-    ) {
-      const camLerp = 8 * delta;
-      smoothCamPos.lerp(targetCamPos, Math.min(camLerp, 1));
-      renderer.camera.position.copy(smoothCamPos);
-
-      const lookTarget = playerPosVec.clone().add(heightVec);
-      smoothLookTarget.lerp(lookTarget, Math.min(12 * delta, 1));
-      if (!isNaN(smoothLookTarget.x)) {
-        renderer.camera.lookAt(smoothLookTarget);
-      }
-    }
-
-    // --- 3. Movement Logic (Physics Based) ---
+    // --- 3. Movement Logic (Physics Based - Spherical) ---
     const input = inputManager.getDirection();
     const isSprinting = inputManager.getAction("sprint") > 0 && playerControl.oxygen > 0;
     playerControl.isSprinting = isSprinting;
 
-    // Ground Detection — more generous raycast
+    // Ground Detection — spherical raycast pointing down towards center of planet
+    const downDir = normal.clone().negate();
     const groundRay = new RAPIER.Ray(
       { x: playerPosVec.x, y: playerPosVec.y, z: playerPosVec.z },
-      { x: 0, y: -1, z: 0 },
+      { x: downDir.x, y: downDir.y, z: downDir.z },
     );
 
     const groundHit = physicsManager.world.castRay(
       groundRay,
-      1.0, // Longer ray for slope tolerance
+      1.1, // Ray length for slope tolerance
       true,
       undefined,
       undefined,
@@ -165,19 +171,24 @@ export function updatePlayerControlSystem(delta: number) {
       rigidBody,
     );
 
-    // Grounded if ray hit within capsule half-height + tolerance
-    const groundThreshold = 0.95; // capsule half-height(0.5) + radius(0.3) + tolerance(0.15)
+    // Grounded if ray hit within threshold
+    const groundThreshold = 0.95;
     playerControl.grounded =
       groundHit !== null &&
       (groundHit as any).toi <= groundThreshold;
 
-    // Calculate forward/right vectors based on camera yaw
-    const forward = new THREE.Vector3(0, 0, -1).applyEuler(
-      new THREE.Euler(0, playerControl.yaw, 0),
-    );
-    const right = new THREE.Vector3(1, 0, 0).applyEuler(
-      new THREE.Euler(0, playerControl.yaw, 0),
-    );
+    // Camera local orientations (tangent to surface)
+    const camForward = new THREE.Vector3(0, 0, -1).applyQuaternion(renderer.camera.quaternion);
+    
+    // Project camera forward onto the horizontal plane (perpendicular to normal)
+    let forward = camForward.clone().projectOnPlane(normal).normalize();
+    if (forward.lengthSq() < 0.001) {
+      // Fallback direction if looking straight down/up at poles
+      forward.copy(new THREE.Vector3(0, 0, -1).applyQuaternion(cameraRig.quaternion)).projectOnPlane(normal).normalize();
+    }
+    
+    // Calculate right direction
+    const right = new THREE.Vector3().crossVectors(forward, normal).normalize();
 
     const moveDir = new THREE.Vector3();
     const inputMagSq = input.x * input.x + input.z * input.z;
@@ -188,25 +199,26 @@ export function updatePlayerControlSystem(delta: number) {
       rigidBody.wakeUp();
     }
 
-    // Movement speed / force
+    // Movement speed
     const currentSpeed = isSprinting
       ? playerControl.sprintSpeed
       : playerControl.speed;
 
     const currentVelocity = rigidBody.linvel();
-    
-    // Target horizontal velocity
-    const targetVelX = inputMagSq > 0 ? moveDir.x * currentSpeed : 0;
-    const targetVelZ = inputMagSq > 0 ? moveDir.z * currentSpeed : 0;
+    const velVec = new THREE.Vector3(currentVelocity.x, currentVelocity.y, currentVelocity.z);
 
-    // Smooth movement using direct velocity lerping (frictionless feel with precise control)
-    // Ground acceleration is snappy (15.0), air control is floaty (4.0)
-    const accel = playerControl.grounded ? 15.0 : 4.0;
-    const newVelX = THREE.MathUtils.lerp(currentVelocity.x, targetVelX, accel * delta);
-    const newVelZ = THREE.MathUtils.lerp(currentVelocity.z, targetVelZ, accel * delta);
+    // Decompose current velocity into vertical (along normal) and horizontal (along tangent plane)
+    let verticalSpeed = velVec.dot(normal);
+    const horizontalVelocity = velVec.clone().projectOnPlane(normal);
 
-    // Apply linear velocity
-    rigidBody.setLinvel({ x: newVelX, y: currentVelocity.y, z: newVelZ }, true);
+    // Apply manual spherical gravity when not grounded
+    const gravityStrength = 3.5;
+    if (!playerControl.grounded) {
+      verticalSpeed -= gravityStrength * delta;
+    } else {
+      // Keep verticalSpeed clamped to 0 or positive to prevent sinking
+      verticalSpeed = Math.max(0.0, verticalSpeed);
+    }
 
     // Jump
     const jumpCooldown = (player as any)._jumpCooldown || 0;
@@ -215,12 +227,13 @@ export function updatePlayerControlSystem(delta: number) {
     }
 
     if (inputManager.getAction("jump") > 0 && playerControl.grounded && jumpCooldown <= 0) {
-      // Direct jump velocity for consistent and satisfying low-gravity leap
-      rigidBody.setLinvel({ x: newVelX, y: playerControl.jumpForce, z: newVelZ }, true);
+      // Jump along normal vector
+      verticalSpeed = playerControl.jumpForce;
       playerControl.grounded = false;
       rigidBody.wakeUp();
       events.emit("player:jump");
       (player as any)._jumpCooldown = 0.4; // Prevent rapid jumping
+      playerControl.isJetpacking = false;
     }
     // Jetpack — hold Space while airborne, uses oxygen
     else if (
@@ -228,33 +241,68 @@ export function updatePlayerControlSystem(delta: number) {
       !playerControl.grounded &&
       playerControl.oxygen > 0
     ) {
-      // Smooth vertical thrust in low gravity
+      // Smooth vertical thrust along normal vector in low gravity
       const targetJetpackY = 4.5;
-      const newVelY = THREE.MathUtils.lerp(currentVelocity.y, targetJetpackY, 6.0 * delta);
-      rigidBody.setLinvel({ x: newVelX, y: newVelY, z: newVelZ }, true);
+      verticalSpeed = THREE.MathUtils.lerp(verticalSpeed, targetJetpackY, 6.0 * delta);
 
       playerControl.oxygen = Math.max(
         0,
-        playerControl.oxygen - 12 * delta, // Slightly more generous oxygen cost for better gameplay
+        playerControl.oxygen - 12 * delta,
       );
       events.emit(
         "player:oxygen:changed",
         playerControl.oxygen,
         playerControl.maxOxygen,
       );
+      playerControl.isJetpacking = true;
+    } else {
+      playerControl.isJetpacking = false;
     }
+
+    // Smooth movement along tangent plane
+    const targetHorizontalVel = moveDir.clone().multiplyScalar(currentSpeed);
+    const accel = playerControl.grounded ? 15.0 : 4.0;
+    const newHorizontalVel = horizontalVelocity.clone().lerp(targetHorizontalVel, accel * delta);
+
+    // Recombine horizontal and vertical velocity components
+    const finalVelocity = newHorizontalVel.clone().addScaledVector(normal, verticalSpeed);
+
+    // Apply linear velocity
+    rigidBody.setLinvel({ x: finalVelocity.x, y: finalVelocity.y, z: finalVelocity.z }, true);
 
     // --- 4. Visual Orientation ---
     const targetQuaternion = new THREE.Quaternion();
+    
+    // Player upright normal rotation
+    const uprightQuat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), normal);
+
     if (inputMagSq > 0 && !isFreeLooking) {
-      const moveAngle = Math.atan2(moveDir.x, moveDir.z);
-      targetQuaternion.setFromAxisAngle(upVector, moveAngle);
+      // Face the moveDir (which is already projected tangent to the normal)
+      const localUp = normal;
+      const localForward = moveDir.clone().normalize();
+      const localRight = new THREE.Vector3().crossVectors(localUp, localForward).normalize();
+      
+      const m = new THREE.Matrix4().makeBasis(localRight, localUp, localForward);
+      targetQuaternion.setFromRotationMatrix(m);
 
       if (!object3d.userData.lastHeading)
         object3d.userData.lastHeading = targetQuaternion.clone();
       else object3d.userData.lastHeading.copy(targetQuaternion);
     } else if (object3d.userData.lastHeading) {
-      targetQuaternion.copy(object3d.userData.lastHeading);
+      // If standing still, align the last heading to the current normal vector
+      const lastForward = new THREE.Vector3(0, 0, 1).applyQuaternion(object3d.userData.lastHeading);
+      const localUp = normal;
+      const localForward = lastForward.projectOnPlane(normal).normalize();
+      if (localForward.lengthSq() > 0.001) {
+        const localRight = new THREE.Vector3().crossVectors(localUp, localForward).normalize();
+        const m = new THREE.Matrix4().makeBasis(localRight, localUp, localForward);
+        targetQuaternion.setFromRotationMatrix(m);
+        object3d.userData.lastHeading.copy(targetQuaternion);
+      } else {
+        targetQuaternion.copy(uprightQuat);
+      }
+    } else {
+      targetQuaternion.copy(uprightQuat);
     }
 
     // Smooth visual turn
@@ -288,6 +336,78 @@ export function updatePlayerControlSystem(delta: number) {
       animation.mixer.timeScale =
         nextAction === "Idle" ? 1.0 : Math.max(0.5, horizontalSpeed / 5.0);
       animation.mixer.update(delta);
+    }
+
+    // --- Sonar Scanner Updates ---
+    if (scannerCooldown > 0) {
+      scannerCooldown -= delta;
+    }
+
+    if (inputManager.getAction("scanner") > 0 && scannerCooldown <= 0 && !scannerActive) {
+      scannerActive = true;
+      scannerScale = 0.1;
+      scannerCooldown = 3.0; // 3 seconds radar cooldown
+
+      if (!scannerMesh) {
+        const geo = new THREE.SphereGeometry(1, 32, 16);
+        const mat = new THREE.MeshBasicMaterial({
+          color: 0x00ffcc,
+          wireframe: true,
+          transparent: true,
+          opacity: 0.25,
+          side: THREE.DoubleSide,
+        });
+        scannerMesh = new THREE.Mesh(geo, mat);
+      }
+      scannerMesh.position.copy(playerPosVec);
+      scannerMesh.scale.setScalar(0.1);
+      renderer.scene.add(scannerMesh);
+      events.emit("log:message", "RADAR PING SENT — SCANNING FOR BEACONS", "info");
+    }
+
+    if (scannerActive && scannerMesh) {
+      scannerScale += 45.0 * delta; // Expands at 45 meters per second
+      scannerMesh.position.copy(playerPosVec);
+      scannerMesh.scale.setScalar(scannerScale);
+
+      const op = 0.25 * (1.0 - scannerScale / SCANNER_MAX_RADIUS);
+      (scannerMesh.material as THREE.MeshBasicMaterial).opacity = Math.max(0.0, op);
+
+      // Check distance to beacons
+      for (const beacon of queries.beacons) {
+        const dist = playerPosVec.distanceTo(beacon.object3d.position);
+        if (dist <= scannerScale && !(beacon as any)._pingedThisScan) {
+          (beacon as any)._pingedThisScan = true;
+          events.emit(
+            "log:message",
+            `RADAR: BEACON DETECTED — RANGE: ${Math.round(dist)}m`,
+            "info"
+          );
+
+          // Visual highlight flash
+          const ud = beacon.object3d.userData;
+          if (ud && ud.light && ud.crystalMat) {
+            const origLightInt = ud.light.intensity;
+            const origEmInt = ud.crystalMat.emissiveIntensity;
+            
+            ud.light.intensity = 24.0;
+            ud.crystalMat.emissiveIntensity = 8.0;
+
+            setTimeout(() => {
+              if (ud.light) ud.light.intensity = origLightInt;
+              if (ud.crystalMat) ud.crystalMat.emissiveIntensity = origEmInt;
+            }, 1500);
+          }
+        }
+      }
+
+      if (scannerScale >= SCANNER_MAX_RADIUS) {
+        scannerActive = false;
+        renderer.scene.remove(scannerMesh);
+        for (const beacon of queries.beacons) {
+          delete (beacon as any)._pingedThisScan;
+        }
+      }
     }
   }
 }
