@@ -11,8 +11,8 @@ export class PhysicsManager {
   public async init() {
     await RAPIER.init();
 
-    // Low gravity alien planet
-    const gravity = { x: 0.0, y: -3.5, z: 0.0 };
+    // Zero global gravity (spherical gravity calculated manually)
+    const gravity = { x: 0.0, y: 0.0, z: 0.0 };
     this.world = new RAPIER.World(gravity);
 
     this.isInitialized = true;
