@@ -4,6 +4,7 @@ import { inputManager } from "../../managers/InputManager";
 import { renderer } from "../../core/Renderer";
 import { physicsManager } from "../../managers/PhysicsManager";
 import { events } from "../../utils/EventBus";
+import { audioManager } from "../../managers/AudioManager";
 import RAPIER from "@dimforge/rapier3d-compat";
 
 
@@ -259,6 +260,9 @@ export function updatePlayerControlSystem(delta: number) {
       playerControl.isJetpacking = false;
     }
 
+    // Sync Audio
+    audioManager.setJetpackActive(playerControl.isJetpacking);
+
     // Smooth movement along tangent plane
     const targetHorizontalVel = moveDir.clone().multiplyScalar(currentSpeed);
     const accel = playerControl.grounded ? 15.0 : 4.0;
@@ -363,6 +367,7 @@ export function updatePlayerControlSystem(delta: number) {
       scannerMesh.scale.setScalar(0.1);
       renderer.scene.add(scannerMesh);
       events.emit("log:message", "RADAR PING SENT — SCANNING FOR BEACONS", "info");
+      audioManager.playScannerPing();
     }
 
     if (scannerActive && scannerMesh) {
