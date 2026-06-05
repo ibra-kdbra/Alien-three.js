@@ -1,5 +1,6 @@
 import { events } from "../utils/EventBus";
 import { inputManager } from "./InputManager";
+import { audioManager } from "./AudioManager";
 
 export class UIManager {
   private startScreen = document.getElementById("start-screen") as HTMLElement;
@@ -48,6 +49,11 @@ export class UIManager {
       if (!this.gameStarted) {
         this.gameStarted = true;
         this.startScreen.style.opacity = "0";
+        
+        // Initialize Audio Context on first user interaction
+        audioManager.init();
+        audioManager.startAmbientDrone();
+
         setTimeout(() => {
           this.startScreen.style.display = "none";
           
