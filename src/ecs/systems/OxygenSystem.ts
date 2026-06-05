@@ -1,5 +1,6 @@
 import { queries } from "../World";
 import { events } from "../../utils/EventBus";
+import { audioManager } from "../../managers/AudioManager";
 
 const BASE_DRAIN_RATE = 0.35;      // ~2% per minute at baseline
 const SPRINT_DRAIN_RATE = 1.5;     // ~8% per minute while sprinting
@@ -71,9 +72,11 @@ export function updateOxygenSystem(delta: number) {
     // Low oxygen warnings
     if (playerControl.oxygen <= 25 && playerControl.oxygen > 24.5) {
       events.emit("log:message", "⚠ O₂ CRITICAL — LOCATE BEACON", "danger");
+      audioManager.playLowOxygenWarning();
     }
     if (playerControl.oxygen <= 10 && playerControl.oxygen > 9.5) {
       events.emit("log:message", "⚠ O₂ DEPLETING — IMMINENT FAILURE", "danger");
+      audioManager.playLowOxygenWarning();
     }
 
     // Game over
