@@ -9,7 +9,7 @@ void main() {
     vec4 finalColor = vec4(r.r, color.g, b.b, color.a);
     
     // Vignette calculation for atmospheric depth
-    vec2 uv = vUv * (1.0 - vUv.yx);
+    vec2 uv = vUv * (1.0 - vUv);
     float vignette = uv.x * uv.y * 15.0;
     vignette = pow(vignette, 0.25);
     
