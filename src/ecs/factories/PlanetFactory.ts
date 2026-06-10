@@ -153,6 +153,7 @@ export function createPlanet(
     shader.fragmentShader = shader.fragmentShader.replace(
       '#include <roughnessmap_fragment>',
       `
+      float roughnessFactor = roughness;
       vec4 roughX = texture2D(uRoughnessMap, xUV);
       vec4 roughY = texture2D(uRoughnessMap, yUV);
       vec4 roughZ = texture2D(uRoughnessMap, zUV);
