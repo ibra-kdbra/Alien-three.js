@@ -121,10 +121,11 @@ async function bootstrap() {
 
   // Sun — directional light with shadows
   const sunLight = new THREE.DirectionalLight(0xffeedd, 2.5);
+  sunLight.name = "SunLight";
   sunLight.position.set(80, 60, 40);
   sunLight.castShadow = true;
-  sunLight.shadow.mapSize.width = 2048;
-  sunLight.shadow.mapSize.height = 2048;
+  sunLight.shadow.mapSize.width = 1024;
+  sunLight.shadow.mapSize.height = 1024;
   sunLight.shadow.camera.near = 0.5;
   sunLight.shadow.camera.far = 300;
   sunLight.shadow.camera.left = -80;
@@ -143,12 +144,16 @@ async function bootstrap() {
   // Generate Procedural Skybox
   const skyboxGeo = new THREE.SphereGeometry(1500, 48, 48);
   const skyboxMat = new THREE.ShaderMaterial({
+    uniforms: {
+      uTime: { value: 0 },
+    },
     vertexShader: skyboxVertexShader,
     fragmentShader: skyboxFragmentShader,
     side: THREE.BackSide,
     depthWrite: false,
   });
   const skybox = new THREE.Mesh(skyboxGeo, skyboxMat);
+  skybox.name = "Skybox";
   renderer.scene.add(skybox);
 
   // --- World Generation (Spherical Planet) ---
