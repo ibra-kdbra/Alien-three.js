@@ -161,6 +161,29 @@ class AudioManager {
     osc.start();
     osc.stop(this.ctx.currentTime + 0.4);
   }
+
+  public playUIClick() {
+    if (!this.ctx) return;
+    try {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(800, this.ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(1200, this.ctx.currentTime + 0.05);
+      
+      gain.gain.setValueAtTime(0.08, this.ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.05);
+      
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      
+      osc.start();
+      osc.stop(this.ctx.currentTime + 0.06);
+    } catch (e) {
+      console.warn("Error playing UI click", e);
+    }
+  }
 }
 
 export const audioManager = new AudioManager();
