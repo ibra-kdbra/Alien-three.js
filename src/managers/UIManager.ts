@@ -1,6 +1,7 @@
 import { events } from "../utils/EventBus";
 import { inputManager } from "./InputManager";
 import { audioManager } from "./AudioManager";
+import { renderer } from "../core/Renderer";
 
 export class UIManager {
   private startScreen = document.getElementById("start-screen") as HTMLElement;
@@ -21,6 +22,7 @@ export class UIManager {
   private missionLog = document.getElementById("mission-log") as HTMLElement;
   private sprintIndicator = document.getElementById("sprint-indicator") as HTMLElement;
   private vitalsPanel = document.getElementById("panel-vitals") as HTMLElement;
+  private btnPerfToggle = document.getElementById("btn-perf-toggle") as HTMLButtonElement;
 
   private gameStarted = false;
   private isGameOver = false;
@@ -237,6 +239,30 @@ export class UIManager {
       requestAnimationFrame(checkSprint);
     };
     checkSprint();
+
+    // 10. Performance Mode Toggle
+    if (this.btnPerfToggle) {
+      this.btnPerfToggle.addEventListener("click", (e) => {
+        e.stopPropagation();
+        
+        const nextMode = !renderer.performanceMode;
+        renderer.setPerformanceMode(nextMode);
+        
+        if (nextMode) {
+          this.btnPerfToggle.textContent = "PERFORMANCE MODE: ON";
+          this.btnPerfToggle.style.color = "#ff8833";
+          this.btnPerfToggle.style.border = "1px solid rgba(255, 136, 51, 0.4)";
+          this.btnPerfToggle.style.background = "rgba(255, 136, 51, 0.06)";
+        } else {
+          this.btnPerfToggle.textContent = "PERFORMANCE MODE: OFF";
+          this.btnPerfToggle.style.color = "var(--astra-cyan)";
+          this.btnPerfToggle.style.border = "1px solid var(--astra-cyan-dim)";
+          this.btnPerfToggle.style.background = "rgba(0, 255, 204, 0.06)";
+        }
+        
+        audioManager.playUIClick();
+      });
+    }
   }
 
   private addLogMessage(text: string, type: string) {
