@@ -20,11 +20,11 @@ export function getPlanetHeight(direction: THREE.Vector3, baseRadius = 120): num
   const normDir = direction.clone().normalize();
   const samplePos = normDir.clone().multiplyScalar(baseRadius);
   
-  // Multi-octave simplex noise for organic craters and hills
-  const f = 0.04;
+  // Multi-octave simplex noise for organic craters and hills adjusted for massive scale
+  const f = 0.006;
   const n1 = noise3D(samplePos.x * f, samplePos.y * f, samplePos.z * f);
-  const n2 = noise3D(samplePos.x * f * 2, samplePos.y * f * 2, samplePos.z * f * 2) * 0.5;
-  const displacement = (n1 + n2) * 5.0; // 5 units of mountain height
+  const n2 = noise3D(samplePos.x * f * 2.5, samplePos.y * f * 2.5, samplePos.z * f * 2.5) * 0.4;
+  const displacement = (n1 + n2) * 60.0; // 60 units of majestic mountain height
   
   return baseRadius + displacement;
 }
@@ -33,15 +33,14 @@ export function createPlanet(
   position: { x: number; y: number; z: number },
   radius: number,
 ) {
-  // 1. Create Procedural Mountain Geometry
-  const detail = 50;
+  // 1. Create Procedural Mountain Geometry (Unified detail for visual & physics sync)
+  const detail = 32;
   let geometry = new THREE.IcosahedronGeometry(radius, detail);
   geometry = mergeVertices(geometry) as THREE.IcosahedronGeometry;
 
   const posAttr = geometry.getAttribute("position");
   const vertex = new THREE.Vector3();
   const normal = new THREE.Vector3();
-  const vertices = [];
 
   for (let i = 0; i < posAttr.count; i++) {
     vertex.fromBufferAttribute(posAttr, i);
@@ -52,7 +51,6 @@ export function createPlanet(
     vertex.copy(normal).multiplyScalar(height);
     
     posAttr.setXYZ(i, vertex.x, vertex.y, vertex.z);
-    vertices.push(vertex.x, vertex.y, vertex.z);
   }
   geometry.computeVertexNormals();
 
@@ -77,88 +75,82 @@ export function createPlanet(
   material.onBeforeCompile = (shader) => {
     // Add uniforms
     shader.uniforms.uDiffuseMap = { value: diffuseMap };
-    shader.uniforms.uNormalMap = { value: normalMap };
-    shader.uniforms.uRoughnessMap = { value: roughnessMap };
-    shader.uniforms.uScale = { value: 0.5 }; // Increased tiling for spherical detail
+    shader.uniforms.uScale = { value: radius * 0.2 }; // Dynamic tiling based on planet radius (high density)
 
     // Inject varying declarations in vertex shader
     shader.vertexShader = shader.vertexShader.replace(
       '#include <common>',
       `#include <common>
-       varying vec3 vWorldPosition;
-       varying vec3 vWorldNormal;`
+       varying vec3 vCustomWorldPosition;
+       varying vec3 vCustomWorldNormal;
+       varying float vCustomRelativeHeight;`
     );
 
     // Calculate world normal in vertex shader
     shader.vertexShader = shader.vertexShader.replace(
       '#include <beginnormal_vertex>',
       `#include <beginnormal_vertex>
-       vWorldNormal = normalize((modelMatrix * vec4(normal, 0.0)).xyz);`
+       vCustomWorldNormal = normalize((modelMatrix * vec4(normal, 0.0)).xyz);`
     );
 
     // Calculate world position in vertex shader
     shader.vertexShader = shader.vertexShader.replace(
       '#include <begin_vertex>',
       `#include <begin_vertex>
-       vWorldPosition = (modelMatrix * vec4(position, 1.0)).xyz;`
+       vCustomWorldPosition = (modelMatrix * vec4(position, 1.0)).xyz;
+       vCustomRelativeHeight = length(position) - 800.0;`
     );
 
     // Inject varying/uniform declarations in fragment shader
     shader.fragmentShader = shader.fragmentShader.replace(
       '#include <common>',
       `#include <common>
-       varying vec3 vWorldPosition;
-       varying vec3 vWorldNormal;
+       varying vec3 vCustomWorldPosition;
+       varying vec3 vCustomWorldNormal;
+       varying float vCustomRelativeHeight;
        uniform sampler2D uDiffuseMap;
-       uniform sampler2D uNormalMap;
-       uniform sampler2D uRoughnessMap;
        uniform float uScale;`
     );
 
-    // Replace standard map sampling in fragment shader with triplanar diffuse
+    // Replace standard map sampling in fragment shader with triplanar diffuse + height color grading
     shader.fragmentShader = shader.fragmentShader.replace(
       '#include <map_fragment>',
       `
-      vec3 blending = abs(normalize(vWorldNormal));
+      // Calculate blending weights for triplanar mapping
+      vec3 blending = abs(normalize(vCustomWorldNormal));
       blending = pow(blending, vec3(4.0));
       blending /= (blending.x + blending.y + blending.z);
 
-      vec2 xUV = vWorldPosition.zy * uScale;
-      vec2 yUV = vWorldPosition.xz * uScale;
-      vec2 zUV = vWorldPosition.xy * uScale;
+      // Triplanar UVs
+      vec2 xUV = vCustomWorldPosition.zy * uScale;
+      vec2 yUV = vCustomWorldPosition.xz * uScale;
+      vec2 zUV = vCustomWorldPosition.xy * uScale;
 
+      // Sample textures
       vec4 texX = texture2D(uDiffuseMap, xUV);
       vec4 texY = texture2D(uDiffuseMap, yUV);
       vec4 texZ = texture2D(uDiffuseMap, zUV);
 
       vec4 triplanarDiffuse = texX * blending.x + texY * blending.y + texZ * blending.z;
-      diffuseColor *= triplanarDiffuse;
-      `
-    );
 
-    // Replace normal map sampling in fragment shader with triplanar normal mapping
-    shader.fragmentShader = shader.fragmentShader.replace(
-      '#include <normal_fragment_maps>',
-      `
-      vec4 normX = texture2D(uNormalMap, xUV);
-      vec4 normY = texture2D(uNormalMap, yUV);
-      vec4 normZ = texture2D(uNormalMap, zUV);
+      // Color grade based on height displacement for 800 radius
+      float h = clamp((vCustomRelativeHeight + 15.0) / 75.0, 0.0, 1.0); 
+      
+      // Slope calculation
+      float slope = 1.0 - max(0.0, dot(vCustomWorldNormal, normalize(vCustomWorldPosition)));
+      
+      vec3 valleyColor = vec3(0.25, 0.15, 0.18);
+      vec3 flatColor   = vec3(0.55, 0.28, 0.18);
+      vec3 peakColor   = vec3(0.85, 0.55, 0.35);
+      vec3 cliffColor  = vec3(0.2, 0.18, 0.16); // Dark rocky cliffs
+      
+      vec3 heightGradColor = mix(valleyColor, flatColor, smoothstep(0.0, 0.4, h));
+      heightGradColor = mix(heightGradColor, peakColor, smoothstep(0.6, 1.0, h));
 
-      vec3 blendedNormalTex = (normX.xyz * blending.x + normY.xyz * blending.y + normZ.xyz * blending.z) * 2.0 - 1.0;
-      normal = normalize(normal + blendedNormalTex * 0.45);
-      `
-    );
+      // Blend cliff color on steep slopes
+      vec3 finalBaseColor = mix(heightGradColor, cliffColor, smoothstep(0.05, 0.35, slope));
 
-    // Replace roughness map sampling in fragment shader with triplanar roughness mapping
-    shader.fragmentShader = shader.fragmentShader.replace(
-      '#include <roughnessmap_fragment>',
-      `
-      float roughnessFactor = roughness;
-      vec4 roughX = texture2D(uRoughnessMap, xUV);
-      vec4 roughY = texture2D(uRoughnessMap, yUV);
-      vec4 roughZ = texture2D(uRoughnessMap, zUV);
-      float triplanarRoughness = (roughX.r * blending.x + roughY.r * blending.y + roughZ.r * blending.z);
-      roughnessFactor *= triplanarRoughness;
+      diffuseColor.rgb = finalBaseColor * triplanarDiffuse.rgb;
       `
     );
   };
@@ -168,13 +160,13 @@ export function createPlanet(
   mesh.receiveShadow = true;
   mesh.castShadow = true;
 
-  // 3. Atmosphere (Thin realistic planetary rim)
+  // 3. Atmosphere (Volumetric planetary rim for massive scale)
   const atmosphereGeometry = new THREE.SphereGeometry(radius * 1.05, 64, 64);
   const atmosphereMaterial = new THREE.ShaderMaterial({
     uniforms: {
-      glowColor: { value: new THREE.Color(0x66ccff) },
-      coefficient: { value: 0.9 },
-      power: { value: 6.0 },
+      glowColor: { value: new THREE.Color(0x55bbff) }, // Slightly deeper sky blue
+      coefficient: { value: 0.85 }, // Softer edge
+      power: { value: 4.0 }, // Thicker volumetric haze
     },
     vertexShader: atmosphereVertexShader,
     fragmentShader: atmosphereFragmentShader,
@@ -187,7 +179,26 @@ export function createPlanet(
 
   renderer.scene.add(mesh);
 
-  // 4. Rapier Trimesh Physics
+  // 4. Rapier Trimesh Physics (Using the exact same detail to guarantee collision alignment)
+  const physicsDetail = detail;
+  let physicsGeometry = new THREE.IcosahedronGeometry(radius, physicsDetail);
+  physicsGeometry = mergeVertices(physicsGeometry) as THREE.IcosahedronGeometry;
+
+  const physPosAttr = physicsGeometry.getAttribute("position");
+  const physVertices = [];
+  const tempVertex = new THREE.Vector3();
+  const tempNormal = new THREE.Vector3();
+
+  for (let i = 0; i < physPosAttr.count; i++) {
+    tempVertex.fromBufferAttribute(physPosAttr, i);
+    tempNormal.copy(tempVertex).normalize();
+
+    // Use same shared height function to deform physics geometry
+    const height = getPlanetHeight(tempVertex, radius);
+    tempVertex.copy(tempNormal).multiplyScalar(height);
+    physVertices.push(tempVertex.x, tempVertex.y, tempVertex.z);
+  }
+
   const rigidBodyDesc = RAPIER.RigidBodyDesc.fixed().setTranslation(
     position.x,
     position.y,
@@ -195,8 +206,8 @@ export function createPlanet(
   );
   const rigidBody = physicsManager.world.createRigidBody(rigidBodyDesc);
 
-  const indices = new Uint32Array(geometry.getIndex()!.array);
-  const floatVertices = new Float32Array(vertices);
+  const indices = new Uint32Array(physicsGeometry.getIndex()!.array);
+  const floatVertices = new Float32Array(physVertices);
   const colliderDesc = RAPIER.ColliderDesc.trimesh(floatVertices, indices);
   const collider = physicsManager.world.createCollider(colliderDesc, rigidBody);
 
