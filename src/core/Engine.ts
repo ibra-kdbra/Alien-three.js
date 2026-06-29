@@ -62,15 +62,16 @@ export class Engine {
     updateHazardVisuals(delta, elapsed);
     updateParticleSystem(delta, elapsed);
 
+    // Update skybox time uniform
+    const skybox = renderer.scene.getObjectByName("Skybox");
+    if (skybox && skybox instanceof THREE.Mesh && skybox.material instanceof THREE.ShaderMaterial) {
+      skybox.material.uniforms.uTime.value = elapsed;
+    }
+
     // Debug Update
     debugManager.update();
 
-    // 6. Update LODs based on new camera position
-    renderer.scene.traverse((object) => {
-      if (object instanceof THREE.LOD) {
-        object.update(renderer.camera);
-      }
-    });
+
 
     // 7. Render
     renderer.render(delta);
