@@ -12,6 +12,21 @@ import { assetManager } from "./managers/AssetManager";
 import { physicsManager } from "./managers/PhysicsManager";
 import { debugManager } from "./managers/DebugManager";
 import RAPIER from "@dimforge/rapier3d-compat";
+
+// Global Error Overlay for debugging black screens
+window.addEventListener('error', (e) => {
+  const errDiv = document.createElement('div');
+  errDiv.style.cssText = 'position:fixed;top:0;left:0;background:red;color:white;z-index:9999;padding:20px;font-family:monospace;white-space:pre-wrap;width:100%;height:100%;overflow:auto;';
+  errDiv.innerHTML = `<h1>Fatal Error</h1><p>${e.message}</p><pre>${e.error?.stack || ''}</pre>`;
+  document.body.appendChild(errDiv);
+});
+window.addEventListener('unhandledrejection', (e) => {
+  const errDiv = document.createElement('div');
+  errDiv.style.cssText = 'position:fixed;top:0;left:0;background:darkred;color:white;z-index:9999;padding:20px;font-family:monospace;white-space:pre-wrap;width:100%;height:100%;overflow:auto;';
+  errDiv.innerHTML = `<h1>Unhandled Promise Rejection</h1><p>${e.reason}</p><pre>${e.reason?.stack || ''}</pre>`;
+  document.body.appendChild(errDiv);
+});
+
 import "./styles/style.css";
 
 import skyboxVertexShader from "./shaders/skybox.vertex.glsl?raw";
@@ -120,18 +135,18 @@ async function bootstrap() {
   renderer.scene.add(ambientLight);
 
   // Sun — directional light with shadows
-  const sunLight = new THREE.DirectionalLight(0xffeedd, 2.5);
+  const sunLight = new THREE.DirectionalLight(0xffeedd, 3.5);
   sunLight.name = "SunLight";
-  sunLight.position.set(80, 60, 40);
+  sunLight.position.set(2000, 1500, 1000);
   sunLight.castShadow = true;
   sunLight.shadow.mapSize.width = 1024;
   sunLight.shadow.mapSize.height = 1024;
-  sunLight.shadow.camera.near = 0.5;
-  sunLight.shadow.camera.far = 300;
-  sunLight.shadow.camera.left = -80;
-  sunLight.shadow.camera.right = 80;
-  sunLight.shadow.camera.top = 80;
-  sunLight.shadow.camera.bottom = -80;
+  sunLight.shadow.camera.near = 100;
+  sunLight.shadow.camera.far = 4000;
+  sunLight.shadow.camera.left = -1000;
+  sunLight.shadow.camera.right = 1000;
+  sunLight.shadow.camera.top = 1000;
+  sunLight.shadow.camera.bottom = -1000;
   sunLight.shadow.bias = -0.001;
   sunLight.shadow.normalBias = 0.02;
   renderer.scene.add(sunLight);
@@ -142,7 +157,7 @@ async function bootstrap() {
   renderer.scene.add(fillLight);
 
   // Generate Procedural Skybox
-  const skyboxGeo = new THREE.SphereGeometry(1500, 48, 48);
+  const skyboxGeo = new THREE.SphereGeometry(4000, 48, 48);
   const skyboxMat = new THREE.ShaderMaterial({
     uniforms: {
       uTime: { value: 0 },
@@ -157,7 +172,7 @@ async function bootstrap() {
   renderer.scene.add(skybox);
 
   // --- World Generation (Spherical Planet) ---
-  const planetRadius = 120;
+  const planetRadius = 800;
   createPlanet({ x: 0, y: 0, z: 0 }, planetRadius);
   createLandingZone(planetRadius);
   createWorldClutter(planetRadius);
