@@ -18,14 +18,14 @@ export class Renderer {
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color("#0a0a12");
 
-    // Atmospheric fog — alien planet haze
-    this.scene.fog = new THREE.FogExp2(0x1a0e2e, 0.004);
+    // Atmospheric fog — alien planet haze (reduced density for massive scale)
+    this.scene.fog = new THREE.FogExp2(0x1a0e2e, 0.0005);
 
     this.camera = new THREE.PerspectiveCamera(
       75,
       window.innerWidth / window.innerHeight,
       0.1,
-      2000,
+      5000,
     );
     this.camera.position.set(0, 5, 10);
     this.camera.lookAt(0, 0, 0);
@@ -62,14 +62,14 @@ export class Renderer {
     const renderPass = new RenderPass(this.scene, this.camera);
     this.composer.addPass(renderPass);
 
-    // Bloom — tuned for subtle glow, not wash-out
-    const bloomPass = new UnrealBloomPass(
-      new THREE.Vector2(window.innerWidth, window.innerHeight),
-      0.6,  // strength
-      0.3,  // radius
-      0.7,  // threshold
+    // Bloom — downscaled to 1/4 resolution for low-end graphics efficiency
+    this.bloomPass = new UnrealBloomPass(
+      new THREE.Vector2(window.innerWidth / 4, window.innerHeight / 4),
+      0.5,  // strength
+      0.2,  // radius
+      0.85, // threshold
     );
-    this.composer.addPass(bloomPass);
+    this.composer.addPass(this.bloomPass);
 
     // FXAA — smooth edges
     const fxaaPass = new ShaderPass(FXAAShader);
@@ -86,6 +86,8 @@ export class Renderer {
       uniforms: {
         tDiffuse: { value: null },
         offset: { value: 0.0 },
+        uWarningIntensity: { value: 0.0 },
+        uTime: { value: 0.0 },
       },
       vertexShader: `
         varying vec2 vUv;
@@ -106,9 +108,45 @@ export class Renderer {
     window.addEventListener("resize", this.onResize.bind(this));
   }
 
+  private bloomPass: UnrealBloomPass;
   private fxaaPass: ShaderPass;
   private chromaticPass: ShaderPass;
+  public performanceMode = false;
   private elapsed = 0;
+
+  public setPerformanceMode(enabled: boolean) {
+    this.performanceMode = enabled;
+
+    // Toggle post-processing passes
+    if (this.bloomPass) this.bloomPass.enabled = !enabled;
+    if (this.fxaaPass) this.fxaaPass.enabled = !enabled;
+
+    // Toggle renderer shadow map
+    this.renderer.shadowMap.enabled = !enabled;
+
+    // Toggle shadow casting on scene lights and meshes
+    const sunLight = this.scene.getObjectByName("SunLight");
+    if (sunLight && sunLight instanceof THREE.DirectionalLight) {
+      sunLight.castShadow = !enabled;
+    }
+
+    this.scene.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        // Rocks and other meshes don't cast or receive shadows in performance mode
+        child.castShadow = !enabled;
+        child.receiveShadow = !enabled;
+        if (child.material) {
+          if (Array.isArray(child.material)) {
+            child.material.forEach((m) => (m.needsUpdate = true));
+          } else {
+            child.material.needsUpdate = true;
+          }
+        }
+      }
+    });
+
+    console.log(`Performance Mode: ${enabled ? "ON" : "OFF"}`);
+  }
 
   private onResize() {
     this.camera.aspect = window.innerWidth / window.innerHeight;
@@ -130,6 +168,8 @@ export class Renderer {
 
     // Dynamic Chromatic Aberration based on Player Suit Oxygen
     if (this.chromaticPass) {
+      this.chromaticPass.uniforms["uTime"].value = this.elapsed;
+      
       const playerEntity = queries.player.entities[0];
       if (playerEntity && playerEntity.playerControl) {
         const oxygenPercent = playerEntity.playerControl.oxygen / playerEntity.playerControl.maxOxygen;
@@ -138,11 +178,14 @@ export class Renderer {
           const intensity = 1.0 - (oxygenPercent / 0.3); // 0 at 30%, 1 at 0%
           const pulse = 0.5 + Math.sin(this.elapsed * 10.0) * 0.5; // fast warning pulse
           this.chromaticPass.uniforms["offset"].value = intensity * 0.006 * pulse;
+          this.chromaticPass.uniforms["uWarningIntensity"].value = intensity;
         } else {
           this.chromaticPass.uniforms["offset"].value = 0.0;
+          this.chromaticPass.uniforms["uWarningIntensity"].value = 0.0;
         }
       } else {
         this.chromaticPass.uniforms["offset"].value = 0.0;
+        this.chromaticPass.uniforms["uWarningIntensity"].value = 0.0;
       }
     }
 
