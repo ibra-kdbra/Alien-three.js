@@ -5,11 +5,11 @@ const path = require('path');
 const assets = [
     {
         name: 'human.glb',
-        url: 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/WalkingLady/glTF-Binary/WalkingLady.glb' // Placeholder high quality model
+        url: 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/CesiumMan/glTF-Binary/CesiumMan.glb' // Standard animated walking character
     },
     {
         name: 'vehicle.glb',
-        url: 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/SciFiHelmet/glTF-Binary/SciFiHelmet.glb' // Placeholder scifi asset
+        url: 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/ToyCar/glTF-Binary/ToyCar.glb' // Standard vehicle model
     }
 ];
 
