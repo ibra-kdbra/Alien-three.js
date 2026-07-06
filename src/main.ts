@@ -1,12 +1,13 @@
 import { engine } from "./core/Engine";
 import { createPlayer } from "./ecs/factories/PlayerFactory";
 import { createPlanet, getPlanetHeight } from "./ecs/factories/PlanetFactory";
-import { createBeacons } from "./ecs/factories/BeaconFactory";
+import { createBeacons, BEACON_DIRECTIONS } from "./ecs/factories/BeaconFactory";
 import { createHazards } from "./ecs/factories/HazardFactory";
 import { createLandingZone } from "./ecs/factories/DropshipFactory";
 import { initParticleSystem } from "./ecs/systems/ParticleSystem";
 import * as THREE from "three";
 import { renderer } from "./core/Renderer";
+import { createSun } from "./core/Sun";
 import { uiManager } from "./managers/UIManager";
 import { assetManager } from "./managers/AssetManager";
 import { physicsManager } from "./managers/PhysicsManager";
@@ -32,14 +33,18 @@ import "./styles/style.css";
 import skyboxVertexShader from "./shaders/skybox.vertex.glsl?raw";
 import skyboxFragmentShader from "./shaders/skybox.fragment.glsl?raw";
 
+// A 200m-radius planet: ~1.25km around the equator. Big enough to feel like
+// a world, small enough that every beacon is a purposeful 1–3 minute traverse
+// against the oxygen clock.
+const PLANET_RADIUS = 200;
+
 /**
  * Scatter rock formations across the spherical surface.
- * Uses varied shapes and proper normal-aligned terrain placement.
+ * Keeps the landing zone and beacon sites clear.
  */
 function createWorldClutter(planetRadius: number) {
-  const count = 200;
+  const count = 160;
 
-  // Multiple rock shapes for variety
   const geometries = [
     new THREE.DodecahedronGeometry(1.0, 0),
     new THREE.OctahedronGeometry(1.2, 0),
@@ -53,15 +58,22 @@ function createWorldClutter(planetRadius: number) {
     flatShading: true,
   });
 
-  // Create instanced meshes for each shape type
   const rocksPerType = Math.floor(count / geometries.length);
   const dummy = new THREE.Object3D();
+  const pole = new THREE.Vector3(0, 1, 0);
+
+  const isClearOf = (dir: THREE.Vector3) => {
+    if (dir.dot(pole) > 0.95) return false; // landing zone
+    for (const beaconDir of BEACON_DIRECTIONS) {
+      if (dir.dot(beaconDir) > 0.997) return false; // ~15m around each beacon
+    }
+    return true;
+  };
 
   geometries.forEach((geo) => {
     const mesh = new THREE.InstancedMesh(geo, material, rocksPerType);
 
     for (let i = 0; i < rocksPerType; i++) {
-      // Pick a random direction on the sphere
       let dir;
       do {
         dir = new THREE.Vector3(
@@ -69,37 +81,31 @@ function createWorldClutter(planetRadius: number) {
           Math.random() - 0.5,
           Math.random() - 0.5
         ).normalize();
-        // Keep the spawn area clear (spawn is at North Pole direction (0, 1, 0))
-      } while (dir.dot(new THREE.Vector3(0, 1, 0)) > 0.95);
+      } while (!isClearOf(dir));
 
       const height = getPlanetHeight(dir, planetRadius);
       const pos = dir.clone().multiplyScalar(height);
 
-      // Align the rock to stand upright along the normal
       dummy.position.set(pos.x, pos.y, pos.z);
-      
+
       const uprightQuat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
       dummy.quaternion.copy(uprightQuat);
-      
-      // Add random local spin
+
       dummy.rotateY(Math.random() * Math.PI * 2);
       dummy.rotateX((Math.random() - 0.5) * 0.3);
       dummy.rotateZ((Math.random() - 0.5) * 0.3);
 
-      const scale = 0.4 + Math.random() * 2.5;
+      const scale = 0.4 + Math.random() * 1.8;
       dummy.scale.setScalar(scale);
       dummy.updateMatrix();
       mesh.setMatrixAt(i, dummy.matrix);
 
       // Physical collider for each rock
-      const rockRadius = scale * 0.8;
-      
-      // Rapier collider description aligned to normal
       const rigidBodyDesc = RAPIER.RigidBodyDesc.fixed()
         .setTranslation(pos.x, pos.y, pos.z)
         .setRotation(uprightQuat);
       const rockBody = physicsManager.world.createRigidBody(rigidBodyDesc);
-      const colliderDesc = RAPIER.ColliderDesc.ball(rockRadius);
+      const colliderDesc = RAPIER.ColliderDesc.ball(scale * 0.75);
       physicsManager.world.createCollider(colliderDesc, rockBody);
     }
 
@@ -134,27 +140,16 @@ async function bootstrap() {
   const ambientLight = new THREE.AmbientLight(0x222233, 0.4);
   renderer.scene.add(ambientLight);
 
-  // Sun — directional light with shadows
-  const sunLight = new THREE.DirectionalLight(0xffeedd, 3.5);
-  sunLight.name = "SunLight";
-  sunLight.position.set(2000, 1500, 1000);
-  sunLight.castShadow = true;
-  sunLight.shadow.mapSize.width = 1024;
-  sunLight.shadow.mapSize.height = 1024;
-  sunLight.shadow.camera.near = 100;
-  sunLight.shadow.camera.far = 4000;
-  sunLight.shadow.camera.left = -1000;
-  sunLight.shadow.camera.right = 1000;
-  sunLight.shadow.camera.top = 1000;
-  sunLight.shadow.camera.bottom = -1000;
-  sunLight.shadow.bias = -0.001;
-  sunLight.shadow.normalBias = 0.02;
-  renderer.scene.add(sunLight);
+  // Sun with a player-following shadow frustum
+  createSun(renderer.scene);
 
   // Opposite fill light (weaker, cool-toned)
   const fillLight = new THREE.DirectionalLight(0x6688cc, 0.5);
   fillLight.position.set(-50, 30, -30);
   renderer.scene.add(fillLight);
+
+  // Atmospheric haze tuned to the planet scale
+  renderer.scene.fog = new THREE.FogExp2(0x1a0e2e, 0.0035);
 
   // Generate Procedural Skybox
   const skyboxGeo = new THREE.SphereGeometry(4000, 48, 48);
@@ -172,25 +167,48 @@ async function bootstrap() {
   renderer.scene.add(skybox);
 
   // --- World Generation (Spherical Planet) ---
-  const planetRadius = 800;
-  createPlanet({ x: 0, y: 0, z: 0 }, planetRadius);
-  createLandingZone(planetRadius);
-  createWorldClutter(planetRadius);
+  createPlanet({ x: 0, y: 0, z: 0 }, PLANET_RADIUS);
+  createLandingZone(PLANET_RADIUS);
+  createWorldClutter(PLANET_RADIUS);
 
   // Gameplay entities
-  createBeacons(planetRadius, getPlanetHeight);
-  createHazards(planetRadius, getPlanetHeight);
+  createBeacons(PLANET_RADIUS, getPlanetHeight);
+  createHazards(PLANET_RADIUS, getPlanetHeight);
 
   // Initialize particles
   initParticleSystem();
 
-  // Spawn player on terrain surface near the dropship on the landing pad
-  const spawnDir = new THREE.Vector3(0.03, 1.0, 0.0).normalize();
-  const spawnDist = getPlanetHeight(spawnDir, planetRadius) + 1.2;
-  const spawnPos = spawnDir.clone().multiplyScalar(spawnDist);
+  // Spawn player on the landing pad next to the dropship. Height is derived
+  // from the pad surface (which sits at pole height − 0.05), not the noise
+  // field under the spawn point, so the capsule always drops cleanly onto it.
+  const poleHeight = getPlanetHeight(new THREE.Vector3(0, 1, 0), PLANET_RADIUS);
+  const spawnDir = new THREE.Vector3(0.02, 1.0, 0.0).normalize();
+  const spawnPos = spawnDir.clone().multiplyScalar(poleHeight + 1.5);
   createPlayer({ x: spawnPos.x, y: spawnPos.y, z: spawnPos.z });
 
   console.log("ASTRA: LOST SIGNAL — Game initialized");
+
+  // Debug/testing handle (harmless in production; used by the smoke test)
+  const { queries } = await import("./ecs/World");
+  const { gameState } = await import("./core/GameState");
+  const { charDiag } = await import("./ecs/systems/CharacterSystem");
+  (window as any).__astra = {
+    getDiag: () => JSON.parse(JSON.stringify(charDiag)),
+    getPlayerState() {
+      const player = queries.player.first;
+      if (!player) return null;
+      const p = player.object3d.position;
+      return {
+        phase: gameState.phase,
+        position: { x: p.x, y: p.y, z: p.z },
+        radialDistance: p.length(),
+        grounded: player.playerControl.grounded,
+        oxygen: player.playerControl.oxygen,
+        fuel: player.playerControl.jetpackFuel,
+        velocity: { ...player.playerControl.velocity },
+      };
+    },
+  };
 }
 
 bootstrap().catch(console.error);
