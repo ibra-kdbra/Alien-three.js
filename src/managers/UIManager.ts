@@ -18,6 +18,8 @@ export class UIManager {
   private oxygenText = document.getElementById("oxygen-text") as HTMLElement;
   private signalBar = document.getElementById("signal-bar") as HTMLElement;
   private signalText = document.getElementById("signal-text") as HTMLElement;
+  private fuelBar = document.getElementById("fuel-bar") as HTMLElement;
+  private fuelText = document.getElementById("fuel-text") as HTMLElement;
   private modeIndicator = document.getElementById("mode-indicator") as HTMLElement;
   private missionLog = document.getElementById("mission-log") as HTMLElement;
   private sprintIndicator = document.getElementById("sprint-indicator") as HTMLElement;
@@ -50,6 +52,7 @@ export class UIManager {
     const startGame = () => {
       if (!this.gameStarted) {
         this.gameStarted = true;
+        events.emit("game:start");
         this.startScreen.style.opacity = "0";
         
         // Initialize Audio Context on first user interaction
@@ -158,6 +161,17 @@ export class UIManager {
           this.modeIndicator.textContent = "NOMINAL";
           this.modeIndicator.className = "value nominal";
           this.vitalsPanel?.classList.remove("hud-warning");
+        }
+      }
+    });
+
+    // 2b. Jetpack fuel updates
+    events.on("player:fuel:changed", (current: number, max: number) => {
+      if (this.fuelBar) {
+        const percent = Math.max(0, (current / max) * 100);
+        this.fuelBar.style.width = `${percent}%`;
+        if (this.fuelText) {
+          this.fuelText.textContent = `${Math.round(percent)}%`;
         }
       }
     });
