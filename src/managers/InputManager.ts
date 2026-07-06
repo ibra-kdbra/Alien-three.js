@@ -48,6 +48,25 @@ export class InputManager {
 
   private onKeyDown(event: KeyboardEvent) {
     this.keys[event.code] = true;
+    if (!event.repeat) {
+      const action = this.keyMap[event.code];
+      if (action) this.pressedActions.add(action);
+    }
+  }
+
+  // Actions pressed since they were last consumed (edge detection).
+  private pressedActions = new Set<InputAction>();
+
+  /**
+   * Returns true exactly once per physical key press. Use for toggles and
+   * buffered actions (jump); use getAction() for held state.
+   */
+  public consumePressed(action: InputAction): boolean {
+    if (this.pressedActions.has(action)) {
+      this.pressedActions.delete(action);
+      return true;
+    }
+    return false;
   }
 
   private onKeyUp(event: KeyboardEvent) {
