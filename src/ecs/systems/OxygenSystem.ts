@@ -1,15 +1,19 @@
 import { queries } from "../World";
 import { events } from "../../utils/EventBus";
 import { audioManager } from "../../managers/AudioManager";
+import { gameState } from "../../core/GameState";
 
-const BASE_DRAIN_RATE = 0.35;      // ~2% per minute at baseline
-const SPRINT_DRAIN_RATE = 1.5;     // ~8% per minute while sprinting
-const HAZARD_BONUS_DRAIN = 5.0;    // Stacks on top of base when in hazard zone
-
-let gameOver = false;
+const BASE_DRAIN_RATE = 0.35;      // ~100 O₂ ≈ 4.75 minutes at baseline
+const SPRINT_DRAIN_RATE = 1.5;     // sprinting burns ~4x oxygen
+const HAZARD_BONUS_DRAIN = 5.0;    // stacks on top of base when in a hazard zone
+const REFUEL_RATE = 30.0;          // per second inside a refuel zone
+const DROPSHIP_REFUEL_RADIUS = 10.0;
+const BEACON_REFUEL_RADIUS = 4.0;
 
 export function updateOxygenSystem(delta: number) {
-  if (gameOver) return;
+  // Oxygen only ticks during active play — not on the start screen,
+  // not after death, not after extraction.
+  if (!gameState.isPlaying) return;
 
   for (const player of queries.player) {
     const { playerControl, object3d } = player;
@@ -36,30 +40,35 @@ export function updateOxygenSystem(delta: number) {
       }
     }
 
-    // Beacon (Refuel Station) proximity refill
+    // Refuel zones: uncollected beacons and the dropship pad
     let isRefueling = false;
     for (const beacon of queries.beacons) {
-      if (!beacon.beacon || !beacon.object3d) continue;
-      // Define a refuel radius (e.g., 5 units)
-      const dist = playerPos.distanceTo(beacon.object3d.position);
-      if (dist < 4.0) {
+      if (!beacon.beacon || !beacon.object3d || beacon.beacon.collected) continue;
+      if (playerPos.distanceTo(beacon.object3d.position) < BEACON_REFUEL_RADIUS) {
         isRefueling = true;
-        break; // Only need one beacon to refuel
+        break;
+      }
+    }
+    if (!isRefueling) {
+      const dropship = queries.dropships.first;
+      if (
+        dropship?.object3d &&
+        playerPos.distanceTo(dropship.object3d.position) < DROPSHIP_REFUEL_RADIUS
+      ) {
+        isRefueling = true;
       }
     }
 
     if (isRefueling) {
-        // Rapid refill while inside refuel station
-        playerControl.oxygen = Math.min(
-            playerControl.maxOxygen,
-            playerControl.oxygen + 30.0 * delta,
-        );
+      playerControl.oxygen = Math.min(
+        playerControl.maxOxygen,
+        playerControl.oxygen + REFUEL_RATE * delta,
+      );
     } else {
-        // Apply drain
-        playerControl.oxygen = Math.max(
-          0,
-          playerControl.oxygen - drainRate * delta,
-        );
+      playerControl.oxygen = Math.max(
+        0,
+        playerControl.oxygen - drainRate * delta,
+      );
     }
 
     // Emit update
@@ -79,15 +88,11 @@ export function updateOxygenSystem(delta: number) {
       audioManager.playLowOxygenWarning();
     }
 
-    // Game over
+    // Game over — gameState flips to "gameover" via this event, which
+    // stops this system from ticking again.
     if (playerControl.oxygen <= 0) {
-      gameOver = true;
       events.emit("game:over", "OXYGEN DEPLETED");
       events.emit("log:message", "SUIT FAILURE — OXYGEN DEPLETED", "danger");
     }
   }
-}
-
-export function resetOxygenSystem() {
-  gameOver = false;
 }
