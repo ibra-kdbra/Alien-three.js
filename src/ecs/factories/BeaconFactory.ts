@@ -8,17 +8,17 @@ import RAPIER from "@dimforge/rapier3d-compat";
  * Places beacons on the planet surface in 3 distinct 3D directions.
  * Each beacon is aligned to stand upright along the surface normal.
  */
+export const BEACON_DIRECTIONS = [
+  new THREE.Vector3(0.5, 0.4, 0.77).normalize(),
+  new THREE.Vector3(-0.7, -0.3, -0.64).normalize(),
+  new THREE.Vector3(0.2, -0.85, 0.49).normalize(),
+];
+
 export function createBeacons(
   planetRadius: number,
   getPlanetHeightFn: (dir: THREE.Vector3, radius: number) => number,
 ) {
-  const directions = [
-    new THREE.Vector3(0.5, 0.4, 0.77).normalize(),
-    new THREE.Vector3(-0.7, -0.3, -0.64).normalize(),
-    new THREE.Vector3(0.2, -0.85, 0.49).normalize(),
-  ];
-
-  directions.forEach((dir, index) => {
+  BEACON_DIRECTIONS.forEach((dir, index) => {
     const height = getPlanetHeightFn(dir, planetRadius);
     const pos = dir.clone().multiplyScalar(height);
     createBeacon({ x: pos.x, y: pos.y, z: pos.z }, dir, index);
