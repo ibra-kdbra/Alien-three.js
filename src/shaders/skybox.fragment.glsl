@@ -1,4 +1,5 @@
 varying vec3 vWorldPosition;
+uniform float uTime;
 
 float hash(vec3 p) {
     p = fract(p * 0.3183099 + 0.1);
@@ -37,13 +38,15 @@ void main() {
     vec3 dir = normalize(vWorldPosition);
 
     // Base dark space color — deep blue-black
-    vec3 color = vec3(0.01, 0.005, 0.02);
+    vec3 color = vec3(0.008, 0.004, 0.015);
 
-    // --- Multi-layered star system ---
+    // --- Multi-layered star system with time-based twinkling ---
+    
     // Large bright warm stars
     float star1 = hash(floor(dir * 250.0));
     if (star1 > 0.9994) {
-        float intensity = pow(hash(dir * 123.0), 8.0) * 8.0;
+        float twinkle = 0.5 + 0.5 * sin(uTime * 2.5 + star1 * 100.0);
+        float intensity = pow(hash(dir * 123.0), 8.0) * 8.0 * twinkle;
         vec3 starColor = mix(vec3(1.0, 0.9, 0.8), vec3(0.8, 0.9, 1.0), hash(dir * 77.0));
         color += vec3(intensity) * starColor;
     }
@@ -51,14 +54,16 @@ void main() {
     // Medium blue-white stars
     float star2 = hash(floor(dir * 600.0));
     if (star2 > 0.9996) {
-        float intensity = pow(hash(dir * 456.0), 12.0) * 4.0;
+        float twinkle = 0.4 + 0.6 * sin(uTime * 3.8 + star2 * 200.0);
+        float intensity = pow(hash(dir * 456.0), 12.0) * 4.0 * twinkle;
         color += vec3(intensity) * vec3(0.85, 0.92, 1.0);
     }
 
     // Dense tiny background stars
     float star3 = hash(floor(dir * 1200.0));
     if (star3 > 0.9997) {
-        color += vec3(0.6, 0.65, 0.7);
+        float twinkle = 0.6 + 0.4 * sin(uTime * 1.5 + star3 * 300.0);
+        color += vec3(0.6, 0.65, 0.7) * (0.4 + 0.6 * twinkle);
     }
 
     // Ultra-faint star dust
@@ -67,23 +72,24 @@ void main() {
         color += vec3(0.25, 0.28, 0.3);
     }
 
-    // --- Nebula bands ---
+    // --- Nebula bands with slow time-based shifting ---
+    
     // Purple nebula band across the sky
-    float nebula1 = fbm(dir * 3.0 + vec3(0.0, 0.5, 0.0));
+    float nebula1 = fbm(dir * 3.0 + vec3(uTime * 0.005, 0.5 + uTime * 0.003, 0.0));
     float band1 = pow(max(0.0, 1.0 - abs(dir.y + dir.x * 0.3 - 0.1)), 4.0);
-    vec3 nebulaColor1 = vec3(0.15, 0.05, 0.2) * nebula1 * band1;
+    vec3 nebulaColor1 = vec3(0.18, 0.06, 0.25) * nebula1 * band1;
     color += nebulaColor1;
 
     // Teal/cyan nebula in a different region
-    float nebula2 = fbm(dir * 4.0 + vec3(2.0, 0.0, 1.0));
+    float nebula2 = fbm(dir * 4.0 + vec3(2.0 + uTime * 0.004, -uTime * 0.002, 1.0));
     float band2 = pow(max(0.0, 1.0 - abs(dir.y - dir.z * 0.4 + 0.2)), 5.0);
-    vec3 nebulaColor2 = vec3(0.02, 0.1, 0.12) * nebula2 * band2;
+    vec3 nebulaColor2 = vec3(0.02, 0.12, 0.15) * nebula2 * band2;
     color += nebulaColor2;
 
     // Warm orange/red accent (milky way glow)
-    float nebula3 = fbm(dir * 2.5 + vec3(1.0, 0.3, 0.5));
+    float nebula3 = fbm(dir * 2.5 + vec3(1.0 - uTime * 0.003, 0.3, 0.5 + uTime * 0.005));
     float band3 = pow(max(0.0, 1.0 - abs(dir.y + 0.05)), 6.0) * 0.5;
-    vec3 nebulaColor3 = vec3(0.12, 0.04, 0.02) * nebula3 * band3;
+    vec3 nebulaColor3 = vec3(0.15, 0.05, 0.02) * nebula3 * band3;
     color += nebulaColor3;
 
     // --- Distant planet/moon in the sky ---
@@ -103,19 +109,18 @@ void main() {
         // Limb darkening
         float limb = smoothstep(moonSize, moonSize + 0.001, moonDot);
         color = mix(color, moonColor * 1.5, limb * 0.9);
-
-        // Thin atmosphere glow on the moon
     }
+    
     // Moon atmospheric glow
     if (moonDot > moonSize - 0.003) {
         float glowT = smoothstep(moonSize - 0.003, moonSize, moonDot);
-        color += vec3(0.1, 0.06, 0.15) * glowT * 0.6;
+        color += vec3(0.12, 0.07, 0.18) * glowT * 0.6;
     }
 
     // --- Horizon gradient (atmospheric scattering effect) ---
     float horizonFactor = pow(max(0.0, 1.0 - abs(dir.y)), 8.0);
-    vec3 horizonColor = vec3(0.08, 0.03, 0.12); // Deep purple haze
-    color += horizonColor * horizonFactor * 0.4;
+    vec3 horizonColor = vec3(0.08, 0.03, 0.15); // Deep purple space haze
+    color += horizonColor * horizonFactor * 0.5;
 
     gl_FragColor = vec4(color, 1.0);
 }
