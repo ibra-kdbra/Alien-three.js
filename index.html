@@ -16,6 +16,9 @@
     <!-- Scanline overlay -->
     <div id="scanlines"></div>
 
+    <!-- Screen-space waypoint markers -->
+    <div id="waypoints"></div>
+
     <!-- HUD -->
     <div id="hud">
       <!-- Crosshair -->
@@ -69,6 +72,13 @@
           <div class="bar-container">
             <div id="signal-bar" class="bar signal-bar" style="width: 0%"></div>
             <span class="bar-text" id="signal-text">0%</span>
+          </div>
+        </div>
+        <div class="stat-row">
+          <span class="label">JET</span>
+          <div class="bar-container">
+            <div id="fuel-bar" class="bar fuel-bar" style="width: 100%"></div>
+            <span class="bar-text" id="fuel-text">100%</span>
           </div>
         </div>
         <div class="stat-row sprint-indicator" id="sprint-indicator" style="opacity:0">
