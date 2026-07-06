@@ -1,5 +1,7 @@
 uniform sampler2D tDiffuse;
 uniform float offset;
+uniform float uWarningIntensity;
+uniform float uTime;
 varying vec2 vUv;
 
 void main() {
@@ -13,5 +15,11 @@ void main() {
     float vignette = uv.x * uv.y * 15.0;
     vignette = pow(vignette, 0.25);
     
-    gl_FragColor = finalColor * vignette;
+    // Low oxygen warning flash vignette (red heartbeat flash around screen borders)
+    float borderFactor = 1.0 - vignette; // 0 at center, 1 at edges
+    float flash = 0.5 + 0.5 * sin(uTime * 8.0);
+    vec3 warningColor = vec3(1.0, 0.0, 0.0) * borderFactor * uWarningIntensity * flash * 0.45;
+    
+    // Blend vignette and red heartbeat border
+    gl_FragColor = vec4(finalColor.rgb * vignette + warningColor, finalColor.a);
 }
