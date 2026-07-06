@@ -2,8 +2,15 @@ import * as THREE from "three";
 import { Time } from "../utils/Time";
 import { renderer } from "./Renderer";
 import { physicsManager } from "../managers/PhysicsManager";
-import { updatePhysicsSystem } from "../ecs/systems/PhysicsSystem";
-import { updatePlayerControlSystem } from "../ecs/systems/PlayerControlSystem";
+import { capturePhysicsSnapshot, updatePhysicsSystem } from "../ecs/systems/PhysicsSystem";
+import {
+  pollCharacterInput,
+  updateCharacterSystem,
+  updateCharacterVisuals,
+} from "../ecs/systems/CharacterSystem";
+import { updateCameraSystem } from "../ecs/systems/CameraSystem";
+import { updateScannerSystem } from "../ecs/systems/ScannerSystem";
+import { updateWaypointSystem } from "../ecs/systems/WaypointSystem";
 import { updateBeaconSystem } from "../ecs/systems/BeaconSystem";
 import { updateOxygenSystem } from "../ecs/systems/OxygenSystem";
 import { updateHazardVisuals } from "../ecs/factories/HazardFactory";
@@ -11,10 +18,30 @@ import { updateParticleSystem } from "../ecs/systems/ParticleSystem";
 import { updateDropshipSystem } from "../ecs/systems/DropshipSystem";
 import { inputManager } from "../managers/InputManager";
 import { debugManager } from "../managers/DebugManager";
+import { updateSun } from "./Sun";
+import { queries } from "../ecs/World";
 
+/**
+ * Main loop: fixed-timestep simulation with render interpolation.
+ *
+ *   render frame ─┬─ poll edge-triggered input
+ *                 ├─ 0..N fixed ticks (character → gameplay → physics step → snapshot)
+ *                 └─ render update (interpolate transforms → camera → visuals → draw)
+ *
+ * Gameplay and physics always advance in exact 1/60s increments, so the game
+ * plays identically at 30, 60 or 240 FPS; the render pass blends between the
+ * last two physics states so motion still looks perfectly smooth.
+ */
 export class Engine {
   private time: Time;
   private isRunning: boolean = false;
+
+  private static readonly FIXED_DT = 1 / 60;
+  private static readonly MAX_ACCUMULATED = 0.25; // avoid spiral-of-death after tab stalls
+  private accumulator = 0;
+  private fixedElapsed = 0;
+
+  private skybox: THREE.Mesh | null = null;
 
   constructor() {
     this.time = new Time();
@@ -36,47 +63,73 @@ export class Engine {
     this.isRunning = false;
   }
 
+  private fixedUpdate(dt: number) {
+    this.fixedElapsed += dt;
+
+    // 1. Character movement (kinematic controller, spherical gravity)
+    updateCharacterSystem(dt);
+
+    // 2. Gameplay systems
+    updateBeaconSystem(dt, this.fixedElapsed);
+    updateOxygenSystem(dt);
+    updateDropshipSystem(dt, this.fixedElapsed);
+
+    // 3. Physics step + transform snapshot for render interpolation
+    physicsManager.stepOnce();
+    capturePhysicsSnapshot();
+  }
+
+  private renderUpdate(delta: number, alpha: number, elapsed: number) {
+    // 1. Blend physics transforms into the scene graph
+    updatePhysicsSystem(alpha);
+
+    // 2. Camera rig (uses the interpolated player position)
+    updateCameraSystem(delta);
+
+    // 3. Visual-only systems
+    updateCharacterVisuals(delta);
+    updateScannerSystem(delta);
+    updateWaypointSystem();
+    updateHazardVisuals(delta, elapsed);
+    updateParticleSystem(delta, elapsed);
+
+    // 4. Player-following sun shadows
+    const player = queries.player.first;
+    if (player?.object3d) updateSun(player.object3d.position);
+
+    // 5. Skybox time uniform
+    if (!this.skybox) {
+      const found = renderer.scene.getObjectByName("Skybox");
+      if (found instanceof THREE.Mesh) this.skybox = found;
+    }
+    if (this.skybox && this.skybox.material instanceof THREE.ShaderMaterial) {
+      this.skybox.material.uniforms.uTime.value = elapsed;
+    }
+
+    debugManager.update();
+    renderer.render(delta);
+  }
+
   private loop = () => {
     if (!this.isRunning) return;
 
-    // Update time
     this.time.update();
     const delta = this.time.delta;
     const elapsed = this.time.elapsed;
 
-    // 1. Inputs & Player Logic
-    updatePlayerControlSystem(delta);
+    // Edge-triggered input is sampled per render frame so taps between
+    // physics ticks are never dropped.
+    pollCharacterInput();
 
-    // 2. Gameplay Systems
-    updateBeaconSystem(delta, elapsed);
-    updateOxygenSystem(delta);
-    updateDropshipSystem(delta, elapsed);
-
-    // 3. Physics Step (fixed timestep)
-    physicsManager.step(delta);
-
-    // 4. Sync Physics back to Three.js Transforms
-    updatePhysicsSystem();
-
-    // 5. Visual Systems
-    updateHazardVisuals(delta, elapsed);
-    updateParticleSystem(delta, elapsed);
-
-    // Update skybox time uniform
-    const skybox = renderer.scene.getObjectByName("Skybox");
-    if (skybox && skybox instanceof THREE.Mesh && skybox.material instanceof THREE.ShaderMaterial) {
-      skybox.material.uniforms.uTime.value = elapsed;
+    this.accumulator = Math.min(this.accumulator + delta, Engine.MAX_ACCUMULATED);
+    while (this.accumulator >= Engine.FIXED_DT) {
+      this.fixedUpdate(Engine.FIXED_DT);
+      this.accumulator -= Engine.FIXED_DT;
     }
 
-    // Debug Update
-    debugManager.update();
+    const alpha = this.accumulator / Engine.FIXED_DT;
+    this.renderUpdate(delta, alpha, elapsed);
 
-
-
-    // 7. Render
-    renderer.render(delta);
-
-    // 8. Reset ephemeral state
     inputManager.resetMouseDelta();
 
     requestAnimationFrame(this.loop);
