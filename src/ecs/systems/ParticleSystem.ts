@@ -199,7 +199,8 @@ export function updateParticleSystem(delta: number, elapsed: number) {
     if (playerEntity && playerEntity.playerControl?.isJetpacking) {
       const playerObj = playerEntity.object3d;
       const normal = playerObj.position.clone().normalize();
-      const velocity = playerEntity.rigidBody.linvel();
+      // Kinematic bodies report zero linvel — use the controller's velocity
+      const velocity = playerEntity.playerControl.velocity;
       const velVec = new THREE.Vector3(velocity.x, velocity.y, velocity.z);
 
       // Locate dual backpack nozzles in world space
