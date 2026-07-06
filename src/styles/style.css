@@ -591,3 +591,55 @@ body {
     max-width: 200px;
   }
 }
+
+/* === Jetpack Fuel Bar === */
+.fuel-bar {
+  background: linear-gradient(90deg, #ff8833, #ffaa44);
+  box-shadow: 0 0 8px rgba(255, 170, 68, 0.3);
+}
+
+/* === Waypoint Markers === */
+#waypoints {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 45;
+}
+
+.waypoint {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  transform: translate(-50%, -50%);
+  font-family: "Share Tech Mono", monospace;
+  text-align: center;
+  will-change: left, top;
+}
+
+.waypoint-icon {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.waypoint-label {
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  opacity: 0.85;
+}
+
+.waypoint-dist {
+  font-size: 11px;
+  letter-spacing: 0.1em;
+}
+
+.waypoint-beacon {
+  color: var(--astra-cyan);
+  text-shadow: 0 0 8px var(--astra-cyan-glow), 0 0 2px rgba(0, 0, 0, 0.8);
+}
+
+.waypoint-extract {
+  color: #ffaa44;
+  text-shadow: 0 0 8px rgba(255, 170, 68, 0.4), 0 0 2px rgba(0, 0, 0, 0.8);
+}
