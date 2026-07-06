@@ -11,7 +11,8 @@ import RAPIER from "@dimforge/rapier3d-compat";
 export function createLandingZone(planetRadius: number) {
   const spawnDir = new THREE.Vector3(0, 1, 0); // North Pole
   const height = getPlanetHeight(spawnDir, planetRadius);
-  const position = spawnDir.clone().multiplyScalar(height);
+  // Sink the pad slightly so its edge beds into the terrain undulation
+  const position = spawnDir.clone().multiplyScalar(height - 0.3);
 
   const padGroup = new THREE.Group();
   padGroup.position.copy(position);
