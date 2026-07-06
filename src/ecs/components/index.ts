@@ -44,9 +44,13 @@ export type Entity = {
     maxOxygen: number;
     isSprinting?: boolean;
     jetpackFuel?: number;
+    maxJetpackFuel?: number;
     cameraDistance?: number;
     isJetpacking?: boolean;
   };
+
+  // Respawn anchor + kill-radius for fell-through-world recovery
+  spawnPoint?: { x: number; y: number; z: number; safeRadius: number };
 
   // Beacon data
   beacon?: {
