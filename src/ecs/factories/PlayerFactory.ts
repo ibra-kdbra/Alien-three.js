@@ -79,9 +79,15 @@ export function createPlayer(position: { x: number; y: number; z: number }) {
   // 4. Setup Kinematic Character Controller (KCC)
   const characterController = physicsManager.world.createCharacterController(0.02);
   characterController.setSlideEnabled(true);
-  characterController.enableAutostep(0.4, 0.2, true);
-  characterController.enableSnapToGround(0.3);
-  characterController.setMaxSlopeClimbAngle(Math.PI / 3); // 60 degrees
+  characterController.enableAutostep(0.5, 0.2, true);
+  characterController.enableSnapToGround(0.5);
+  characterController.setMaxSlopeClimbAngle(THREE.MathUtils.degToRad(55));
+  characterController.setMinSlopeSlideAngle(THREE.MathUtils.degToRad(65));
+  characterController.setApplyImpulsesToDynamicBodies(true);
+
+  const spawnRadius = Math.sqrt(
+    position.x * position.x + position.y * position.y + position.z * position.z,
+  );
 
   return world.add({
     name: "Player",
@@ -90,14 +96,22 @@ export function createPlayer(position: { x: number; y: number; z: number }) {
     rigidBody,
     collider,
     characterController,
+    spawnPoint: {
+      x: position.x,
+      y: position.y,
+      z: position.z,
+      safeRadius: spawnRadius * 0.55,
+    },
     playerControl: {
-      speed: 8.0,
-      sprintSpeed: 14.0,
-      jumpForce: 5.8,
+      speed: 7.0,
+      sprintSpeed: 12.0,
+      jumpForce: 7.5,
       grounded: false,
       velocity: { x: 0, y: 0, z: 0 },
-      oxygen: 1000000,
-      maxOxygen: 1000000,
+      oxygen: 100,
+      maxOxygen: 100,
+      jetpackFuel: 100,
+      maxJetpackFuel: 100,
       cameraDistance: 6.0,
     },
     animation: {
