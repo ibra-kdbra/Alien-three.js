@@ -54,7 +54,7 @@ export class Renderer {
 
     // Tone mapping for HDR-like visuals
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 0.9;
+    this.renderer.toneMappingExposure = 1.2;
 
     // Post-Processing Pipeline
     this.composer = new EffectComposer(this.renderer);
@@ -65,9 +65,9 @@ export class Renderer {
     // Bloom — downscaled to 1/4 resolution for low-end graphics efficiency
     this.bloomPass = new UnrealBloomPass(
       new THREE.Vector2(window.innerWidth / 4, window.innerHeight / 4),
-      0.5,  // strength
-      0.2,  // radius
-      0.85, // threshold
+      0.55, // strength
+      0.3,  // radius
+      0.8,  // threshold
     );
     this.composer.addPass(this.bloomPass);
 
