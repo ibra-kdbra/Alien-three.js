@@ -8,7 +8,10 @@ import * as THREE from "three";
  * shadows stay crisp wherever you are on the sphere.
  */
 
-const SUN_DIRECTION = new THREE.Vector3(0.8, 0.55, 0.35).normalize();
+// Biased toward the north pole so the spawn/landing zone is well lit at a
+// ~40° grazing angle — bright enough to read the scene, low enough for
+// long dramatic shadows.
+export const SUN_DIRECTION = new THREE.Vector3(0.55, 0.78, 0.3).normalize();
 const SUN_DISTANCE = 180;
 
 let sunLight: THREE.DirectionalLight | null = null;
@@ -16,7 +19,7 @@ let sunLight: THREE.DirectionalLight | null = null;
 const _sunPos = new THREE.Vector3();
 
 export function createSun(scene: THREE.Scene): THREE.DirectionalLight {
-  sunLight = new THREE.DirectionalLight(0xffeedd, 3.5);
+  sunLight = new THREE.DirectionalLight(0xffe3c0, 3.8);
   sunLight.name = "SunLight";
   sunLight.position.copy(SUN_DIRECTION).multiplyScalar(SUN_DISTANCE);
   sunLight.castShadow = true;
