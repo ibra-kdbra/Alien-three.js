@@ -13,6 +13,7 @@ import { updateScannerSystem } from "../ecs/systems/ScannerSystem";
 import { updateWaypointSystem } from "../ecs/systems/WaypointSystem";
 import { updateBeaconSystem } from "../ecs/systems/BeaconSystem";
 import { updateOxygenSystem } from "../ecs/systems/OxygenSystem";
+import { updatePickupSystem, updatePickupVisuals } from "../ecs/systems/PickupSystem";
 import { updateHazardVisuals } from "../ecs/factories/HazardFactory";
 import { updateParticleSystem } from "../ecs/systems/ParticleSystem";
 import { updateDropshipSystem } from "../ecs/systems/DropshipSystem";
@@ -72,6 +73,7 @@ export class Engine {
     // 2. Gameplay systems
     updateBeaconSystem(dt, this.fixedElapsed);
     updateOxygenSystem(dt);
+    updatePickupSystem();
     updateDropshipSystem(dt, this.fixedElapsed);
 
     // 3. Physics step + transform snapshot for render interpolation
@@ -91,6 +93,7 @@ export class Engine {
     updateScannerSystem(delta);
     updateWaypointSystem();
     updateHazardVisuals(delta, elapsed);
+    updatePickupVisuals(delta, elapsed);
     updateParticleSystem(delta, elapsed);
 
     // 4. Player-following sun shadows
