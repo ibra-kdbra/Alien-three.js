@@ -20,9 +20,9 @@ export function createLandingZone(planetRadius: number) {
   // 1. Landing Pad Cylinder Mesh
   const padGeo = new THREE.CylinderGeometry(8.0, 8.5, 0.5, 32);
   const padMat = new THREE.MeshStandardMaterial({
-    color: 0x22252a,
-    roughness: 0.8,
-    metalness: 0.6,
+    color: 0x4a525e,
+    roughness: 0.7,
+    metalness: 0.5,
   });
   const padMesh = new THREE.Mesh(padGeo, padMat);
   padMesh.receiveShadow = true;
@@ -41,6 +41,17 @@ export function createLandingZone(planetRadius: number) {
   ring.position.y = 0.26;
   padGroup.add(ring);
 
+  // Landing lights around the pad rim — emissive only (no PointLights), so
+  // the pad reads from any distance/side without lighting cost.
+  const lampGeo = new THREE.SphereGeometry(0.14, 8, 8);
+  const lampMat = new THREE.MeshBasicMaterial({ color: 0xffcc55 });
+  for (let i = 0; i < 8; i++) {
+    const angle = (i / 8) * Math.PI * 2;
+    const lamp = new THREE.Mesh(lampGeo, lampMat);
+    lamp.position.set(Math.cos(angle) * 7.4, 0.32, Math.sin(angle) * 7.4);
+    padGroup.add(lamp);
+  }
+
   // 2. Procedural Dropship Model Group
   const shipGroup = new THREE.Group();
   shipGroup.position.y = 0.25; // Sits on top of the landing pad
@@ -48,9 +59,9 @@ export function createLandingZone(planetRadius: number) {
   // Cabin
   const cabinGeo = new THREE.BoxGeometry(3.0, 2.0, 5.0);
   const cabinMat = new THREE.MeshStandardMaterial({
-    color: 0x444d5a,
-    roughness: 0.4,
-    metalness: 0.8,
+    color: 0x8d99ab,
+    roughness: 0.35,
+    metalness: 0.75,
   });
   const cabin = new THREE.Mesh(cabinGeo, cabinMat);
   cabin.position.y = 1.0;
@@ -73,9 +84,9 @@ export function createLandingZone(planetRadius: number) {
   // Left & Right Wings
   const wingGeo = new THREE.BoxGeometry(1.2, 0.6, 3.5);
   const wingMat = new THREE.MeshStandardMaterial({
-    color: 0x2b323d,
-    roughness: 0.5,
-    metalness: 0.8,
+    color: 0x646f80,
+    roughness: 0.45,
+    metalness: 0.75,
   });
   const leftWing = new THREE.Mesh(wingGeo, wingMat);
   leftWing.position.set(-2.0, 0.8, -0.5);
@@ -89,9 +100,9 @@ export function createLandingZone(planetRadius: number) {
   // Left & Right Engine Boosters
   const engGeo = new THREE.CylinderGeometry(0.7, 0.7, 2.2, 16);
   const engMat = new THREE.MeshStandardMaterial({
-    color: 0x181c22,
-    roughness: 0.6,
-    metalness: 0.9,
+    color: 0x3d4652,
+    roughness: 0.55,
+    metalness: 0.85,
   });
   const leftEng = new THREE.Mesh(engGeo, engMat);
   leftEng.rotation.x = -Math.PI / 2;
