@@ -91,17 +91,38 @@ function createBeacon(
   light.castShadow = false;
   group.add(light);
 
-  // Vertical light beam (aligned along the normal)
-  const beamGeo = new THREE.CylinderGeometry(0.05, 0.3, 15, 8, 1, true);
+  // Vertical light beam. 300m tall: the horizon on a 200m-radius planet is
+  // only ~27m away at eye height, and a beacon half the planet away needs a
+  // beam this tall to peek over the curvature and the mountain ranges.
+  // This is the player's primary wayfinding tool.
+  const beamGeo = new THREE.CylinderGeometry(1.0, 3.0, 300, 12, 1, true);
   const beamMat = new THREE.MeshBasicMaterial({
     color: 0x00ffcc,
     transparent: true,
-    opacity: 0.15,
+    opacity: 0.22,
     side: THREE.DoubleSide,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    fog: false,
   });
   const beam = new THREE.Mesh(beamGeo, beamMat);
-  beam.position.y = 9;
+  beam.position.y = 150;
   group.add(beam);
+
+  // Bright inner core beam so the column reads even against a lit sky
+  const beamCoreGeo = new THREE.CylinderGeometry(0.25, 0.8, 300, 8, 1, true);
+  const beamCoreMat = new THREE.MeshBasicMaterial({
+    color: 0xaaffee,
+    transparent: true,
+    opacity: 0.35,
+    side: THREE.DoubleSide,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    fog: false,
+  });
+  const beamCore = new THREE.Mesh(beamCoreGeo, beamCoreMat);
+  beamCore.position.y = 150;
+  group.add(beamCore);
 
   renderer.scene.add(group);
 
@@ -113,6 +134,7 @@ function createBeacon(
     outerRing,
     light,
     beam,
+    beamCore,
     crystalMat,
     index,
   };
