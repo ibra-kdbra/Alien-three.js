@@ -22,6 +22,7 @@ export type Entity = {
   isBeacon?: boolean;
   isHazard?: boolean;
   isDropship?: boolean;
+  isPickup?: boolean;
 
   dropship?: {
     activated: boolean;
@@ -57,6 +58,13 @@ export type Entity = {
     collected: boolean;
     signalBoost: number;
     pulsePhase: number;
+  };
+
+  // Oxygen canister pickup
+  pickup?: {
+    amount: number; // oxygen restored on collect
+    collected: boolean;
+    bobPhase: number;
   };
 
   // Hazard data
