@@ -7,6 +7,9 @@ export interface GameEvents {
 
   // Gameplay Events
   "player:jump": () => void;
+  "player:land": (impactSpeed: number) => void;
+  "player:footstep": () => void;
+  "pickup:collected": (amount: number) => void;
   "player:health:changed": (current: number, max: number) => void;
   "player:oxygen:changed": (current: number, max: number) => void;
   "player:fuel:changed": (current: number, max: number) => void;
