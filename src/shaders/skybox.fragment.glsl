@@ -117,6 +117,56 @@ void main() {
         color += vec3(0.12, 0.07, 0.18) * glowT * 0.6;
     }
 
+    // --- Gas giant with rings: the sky landmark ---
+    // Sits opposite the moon so the two anchor different halves of the sky;
+    // players orient by it the way you orient by a mountain range.
+    vec3 gDir = normalize(vec3(-0.55, 0.30, -0.78));
+    float gDot = dot(dir, gDir);
+    if (gDot > 0.9) {
+        vec3 gRight = normalize(cross(vec3(0.0, 1.0, 0.0), gDir));
+        vec3 gUp = normalize(cross(gDir, gRight));
+        vec2 gUV = vec2(dot(dir, gRight), dot(dir, gUp));
+
+        // Tilt the whole planet+ring system for a dynamic composition
+        float ct = cos(-0.35), st = sin(-0.35);
+        vec2 tUV = vec2(gUV.x * ct - gUV.y * st, gUV.x * st + gUV.y * ct);
+
+        float gRadius = 0.085; // ~10 degrees of sky — a true landmark
+        float gDist = length(tUV) / gRadius;
+
+        // Rings first (drawn under the disc): squashed ellipse, near-edge-on
+        vec2 rUV = vec2(tUV.x, tUV.y * 5.5);
+        float ringR = length(rUV) / gRadius;
+        if (ringR > 1.25 && ringR < 2.4 && !(tUV.y > 0.0 && gDist < 1.0)) {
+            float ringNoise = noise(vec3(ringR * 22.0, 1.0, 4.2));
+            float ringBands = 0.55 + 0.45 * sin(ringR * 26.0 + ringNoise * 2.0);
+            float ringMask = smoothstep(1.25, 1.4, ringR) * (1.0 - smoothstep(2.05, 2.4, ringR));
+            color += vec3(0.75, 0.60, 0.44) * ringBands * ringMask * 0.4;
+        }
+
+        // Banded gas disc with turbulence, limb darkening and a terminator
+        if (gDist < 1.0) {
+            float lat = tUV.y / gRadius;
+            float turb = fbm(vec3(tUV * 55.0, 3.7));
+            float bands = sin(lat * 13.0 + turb * 3.5 + tUV.x / gRadius * 0.6);
+            vec3 bandA = vec3(0.82, 0.52, 0.30); // warm amber
+            vec3 bandB = vec3(0.42, 0.22, 0.32); // dusty violet-rose
+            vec3 gasColor = mix(bandB, bandA, bands * 0.5 + 0.5);
+
+            float z = sqrt(max(0.0, 1.0 - gDist * gDist));
+            float shade = 0.25 + 0.75 * pow(z, 0.7);
+            float terminator = clamp(0.55 + 0.6 * (tUV.x / gRadius), 0.3, 1.0);
+            vec3 discColor = gasColor * shade * terminator * 1.2;
+
+            float edge = smoothstep(1.0, 0.985, gDist);
+            color = mix(color, discColor, edge);
+        }
+
+        // Soft atmospheric halo around the limb
+        float outer = max(gDist - 1.0, 0.0);
+        color += vec3(0.30, 0.15, 0.10) * exp(-outer * 7.0) * 0.3 * step(1.0, gDist);
+    }
+
     // --- Horizon gradient (atmospheric scattering effect) ---
     float horizonFactor = pow(max(0.0, 1.0 - abs(dir.y)), 8.0);
     vec3 horizonColor = vec3(0.08, 0.03, 0.15); // Deep purple space haze
