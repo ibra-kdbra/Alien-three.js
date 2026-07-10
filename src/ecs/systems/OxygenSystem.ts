@@ -3,6 +3,8 @@ import { events } from "../../utils/EventBus";
 import { audioManager } from "../../managers/AudioManager";
 import { gameState } from "../../core/GameState";
 
+let wasRefueling = false; // edge-detect zone entry for the HUD message
+
 const BASE_DRAIN_RATE = 0.35;      // ~100 O₂ ≈ 4.75 minutes at baseline
 const SPRINT_DRAIN_RATE = 1.5;     // sprinting burns ~4x oxygen
 const HAZARD_BONUS_DRAIN = 5.0;    // stacks on top of base when in a hazard zone
@@ -58,6 +60,12 @@ export function updateOxygenSystem(delta: number) {
         isRefueling = true;
       }
     }
+
+    // Announce the refuel zone so pads and nodes read as purposeful places
+    if (isRefueling && !wasRefueling && playerControl.oxygen < playerControl.maxOxygen - 1) {
+      events.emit("log:message", "O₂ REPLENISHING — SUPPLY UPLINK ACTIVE", "info");
+    }
+    wasRefueling = isRefueling;
 
     if (isRefueling) {
       playerControl.oxygen = Math.min(
