@@ -4,6 +4,7 @@ import { renderer } from "../../core/Renderer";
 import { physicsManager } from "../../managers/PhysicsManager";
 import { getPlanetHeight } from "./PlanetFactory";
 import { CACHE_DIR } from "../../core/MissionData";
+import { crateTexture } from "../../utils/ProceduralTexture";
 
 /**
  * The Meridian supply cache — Act I's destination. A weathered crate a short
@@ -24,9 +25,12 @@ export function createSupplyCache(planetRadius: number) {
   group.position.copy(pos);
   group.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
 
-  // Main crate hull
+  // Main crate hull — stenciled, hazard-striped Meridian shipping crate
+  const crate = crateTexture();
   const hullMat = new THREE.MeshStandardMaterial({
-    color: 0x39404c,
+    map: crate.map,
+    bumpMap: crate.bump,
+    bumpScale: 0.01,
     roughness: 0.55,
     metalness: 0.65,
   });
