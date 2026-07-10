@@ -266,6 +266,40 @@ async function bootstrap() {
 
   console.log("ASTRA: LOST SIGNAL — Game initialized");
 
+  // Auto quality: if the player never chose a tier, measure real frame cost
+  // after the intro settles and step down until the machine keeps up.
+  const { events } = await import("./utils/EventBus");
+  let storedQuality: string | null = null;
+  try {
+    storedQuality = localStorage.getItem("astra.quality");
+  } catch {
+    /* private browsing */
+  }
+  if (!storedQuality) {
+    events.on("game:start", () => {
+      // Measure REAL frames per second (frame-counter deltas) — main-thread
+      // frameMs misses GPU-bound stalls, which is exactly what weak
+      // integrated GPUs produce.
+      const stepDown = (to: "medium" | "low") => {
+        renderer.setQuality(to);
+        events.emit("log:message", `RENDER QUALITY AUTO-SET: ${to.toUpperCase()}`, "info");
+      };
+      const fpsOver = (seconds: number): Promise<number> =>
+        new Promise((resolve) => {
+          const f0 = engine.frames;
+          window.setTimeout(() => resolve((engine.frames - f0) / seconds), seconds * 1000);
+        });
+      window.setTimeout(async () => {
+        if (document.hidden) return; // backgrounded tabs throttle rAF
+        const fps1 = await fpsOver(5);
+        if (fps1 >= 40 || document.hidden) return;
+        stepDown("medium");
+        const fps2 = await fpsOver(5);
+        if (fps2 < 40 && !document.hidden) stepDown("low");
+      }, 9000); // let the intro descent finish first
+    });
+  }
+
   // Debug/testing handle (harmless in production; used by the smoke test)
   const { queries } = await import("./ecs/World");
   const { gameState } = await import("./core/GameState");
@@ -277,15 +311,91 @@ async function bootstrap() {
     setEvacRemaining(seconds: number) {
       missionState.evacRemaining = seconds;
     },
+    async skipIntro() {
+      const { skipIntro } = await import("./ecs/systems/CameraSystem");
+      skipIntro();
+    },
+    // Test-only: arena state + a legit way to resolve a wave in scripts.
+    async getCombat() {
+      const { aliveCreatureCount } = await import("./ecs/systems/CreatureSystem");
+      const { queries: q } = await import("./ecs/World");
+      const { weaponDebug } = await import("./ecs/systems/WeaponSystem");
+      const positions = q.creatures.entities
+        .filter((c) => c.creature.state !== "dying")
+        .map((c) => {
+          const p = c.object3d.position;
+          return { x: p.x, y: p.y, z: p.z, state: c.creature.state, hp: c.creature.hp };
+        });
+      return { alive: aliveCreatureCount(), positions, weapon: weaponDebug() };
+    },
+    async killWave() {
+      const { damageCreature } = await import("./ecs/systems/CreatureSystem");
+      const { queries: q } = await import("./ecs/World");
+      for (const c of [...q.creatures.entities]) damageCreature(c, 9999);
+    },
     // Test-only: dropship altitude above its pad (verifies the launch anim).
     getShipY() {
       const d = queries.dropships.first;
       const ship = d?.object3d?.children.find((c) => c instanceof THREE.Group);
       return ship ? ship.position.y : null;
     },
+    // Test-only: steer the camera so scripted runs can walk toward targets.
+    addYaw(rad: number) {
+      const p = queries.player.first;
+      if (p?.playerControl) p.playerControl.yaw = (p.playerControl.yaw ?? 0) + rad;
+    },
+    // Test-only: aim the camera ray (which passes through the player's head)
+    // at a world point — steers yaw AND pitch. Returns the residual angle
+    // before the correction; call until it reports ~0.
+    aimAt(x: number, y: number, z: number) {
+      const player = queries.player.first;
+      if (!player?.playerControl || !player.object3d) return null;
+      const pc = player.playerControl;
+      const p = player.object3d.position;
+      const n = p.clone().normalize();
+      const camPos = new THREE.Vector3();
+      renderer.camera.getWorldPosition(camPos);
+      const target = new THREE.Vector3(x, y, z);
+
+      // Yaw: rotate the tangent-plane forward onto the target bearing
+      const dT = target.clone().sub(p).projectOnPlane(n);
+      const f = new THREE.Vector3();
+      renderer.camera.getWorldDirection(f);
+      let yawErr = 0;
+      if (dT.lengthSq() > 1e-6) {
+        dT.normalize();
+        const fT = f.clone().projectOnPlane(n).normalize();
+        yawErr = Math.atan2(fT.clone().cross(dT).dot(n), fT.dot(dT));
+        pc.yaw = (pc.yaw ?? 0) + yawErr;
+      }
+
+      // Pitch: match the beam's elevation to the target's elevation as seen
+      // from the camera (elevations measured against the planet normal)
+      const dFull = target.clone().sub(camPos).normalize();
+      const elTarget = Math.asin(THREE.MathUtils.clamp(dFull.dot(n), -1, 1));
+      const elBeam = Math.asin(THREE.MathUtils.clamp(f.dot(n), -1, 1));
+      const pitchErr = elTarget - elBeam;
+      pc.pitch = THREE.MathUtils.clamp((pc.pitch ?? 0) + pitchErr, -1.25, 1.15);
+
+      return Math.max(Math.abs(yawErr), Math.abs(pitchErr));
+    },
+    getBeaconPos(index: number) {
+      for (const b of queries.beacons) {
+        if (b.object3d?.userData.index === index) {
+          const p = b.object3d.position;
+          return { x: p.x, y: p.y, z: p.z };
+        }
+      }
+      return null;
+    },
+    getDropshipPos() {
+      const p = queries.dropships.first?.object3d?.position;
+      return p ? { x: p.x, y: p.y, z: p.z } : null;
+    },
     getPerf: () => ({
       frameMs: engine.frameMs,
       frameMsMax: engine.frameMsMax,
+      frames: engine.frames,
       drawCalls: renderer.renderer.info.render.calls,
       triangles: renderer.renderer.info.render.triangles,
     }),
