@@ -8,10 +8,10 @@ import * as THREE from "three";
  * shadows stay crisp wherever you are on the sphere.
  */
 
-// Biased toward the north pole so the spawn/landing zone is well lit at a
-// ~40° grazing angle — bright enough to read the scene, low enough for
-// long dramatic shadows.
-export const SUN_DIRECTION = new THREE.Vector3(0.55, 0.78, 0.3).normalize();
+// Low over the horizon from the landing zone (~35° elevation at the pole):
+// grazing light keeps the painted terrain in warm mid-tones instead of
+// noon-flat beige, and mountain ranges throw long readable shadows.
+export const SUN_DIRECTION = new THREE.Vector3(0.68, 0.52, 0.36).normalize();
 const SUN_DISTANCE = 180;
 
 let sunLight: THREE.DirectionalLight | null = null;
@@ -19,7 +19,9 @@ let sunLight: THREE.DirectionalLight | null = null;
 const _sunPos = new THREE.Vector3();
 
 export function createSun(scene: THREE.Scene): THREE.DirectionalLight {
-  sunLight = new THREE.DirectionalLight(0xffe3c0, 3.8);
+  // 2.7 with the vertex-color terrain: 3.8 was tuned against dark photo
+  // textures and blows the painted palette out to beige.
+  sunLight = new THREE.DirectionalLight(0xffdcb0, 2.4);
   sunLight.name = "SunLight";
   sunLight.position.copy(SUN_DIRECTION).multiplyScalar(SUN_DISTANCE);
   sunLight.castShadow = true;
