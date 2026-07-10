@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import RAPIER from "@dimforge/rapier3d-compat";
 import { queries } from "../World";
 import { inputManager } from "../../managers/InputManager";
 import { renderer } from "../../core/Renderer";
@@ -128,8 +129,9 @@ export function updateCharacterSystem(dt: number) {
   renderer.camera.getWorldDirection(_camFwd);
   _forward.copy(_camFwd).projectOnPlane(_normal);
   if (_forward.lengthSq() < 0.001) {
-    // Looking straight along the normal — fall back to camera up
-    _forward.copy(renderer.camera.up).projectOnPlane(_normal);
+    // Looking straight along the normal — fall back to the camera's world Y
+    // axis (NOT camera.up, which the camera rig keeps equal to the normal)
+    _forward.setFromMatrixColumn(renderer.camera.matrixWorld, 1).projectOnPlane(_normal);
   }
   _forward.normalize();
   _right.crossVectors(_forward, _normal).normalize();
@@ -211,11 +213,18 @@ export function updateCharacterSystem(dt: number) {
     kcc.enableSnapToGround(0.5);
   }
 
-  kcc.computeColliderMovement(collider, {
-    x: _vel.x * dt,
-    y: _vel.y * dt,
-    z: _vel.z * dt,
-  });
+  // EXCLUDE_SENSORS is load-bearing: beacon/hazard proximity sensors are big
+  // invisible balls — without the filter the KCC treats them as solid walls
+  // and the player physically can't reach anything with a trigger radius.
+  kcc.computeColliderMovement(
+    collider,
+    {
+      x: _vel.x * dt,
+      y: _vel.y * dt,
+      z: _vel.z * dt,
+    },
+    RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,
+  );
 
   const moved = kcc.computedMovement();
   rigidBody.setNextKinematicTranslation({
@@ -310,6 +319,8 @@ export function updateCharacterVisuals(delta: number) {
       grounded: playerControl.grounded,
       isSprinting: !!playerControl.isSprinting,
       isJetpacking: !!playerControl.isJetpacking,
+      hasCutter: !!playerControl.hasCutter,
+      isAiming: !!playerControl.hasCutter && inputManager.getAction("fire") > 0,
     },
     delta,
   );
