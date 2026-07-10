@@ -14,6 +14,7 @@ import {
   WIN_LINES,
 } from "../core/MissionData";
 import { cachePosition } from "../ecs/factories/CacheFactory";
+import { spawnWave, clearCreatures } from "../ecs/systems/CreatureSystem";
 
 /**
  * The mission director: owns the three-act structure, the single active
@@ -107,12 +108,13 @@ class MissionManager {
   private txQueue: { header: string; body: string }[] = [];
   private txVisible = false;
 
-  private stats = { time: 0, distance: 0, o2Collected: 0, padsFound: 0 };
+  private stats = { time: 0, distance: 0, o2Collected: 0, padsFound: 0, kills: 0 };
   private lastPos = new THREE.Vector3();
   private hasLastPos = false;
   private tick = 0;
   private warned = new Set<number>();
   private ended = false;
+  private evacSpawnTimer = 0;
 
   constructor() {
     this.buildDOM();
@@ -134,10 +136,15 @@ class MissionManager {
       this.stats.o2Collected += amount;
     });
 
+    events.on("creature:killed", () => {
+      this.stats.kills++;
+    });
+
     events.on("mission:complete", () => this.onWin());
     events.on("game:over", () => {
       this.ended = true;
       this.objectivePanel.style.display = "none";
+      clearCreatures();
     });
   }
 
@@ -172,6 +179,13 @@ class MissionManager {
         if (pc) {
           pc.oxygen = Math.min(pc.maxOxygen, pc.oxygen + 25);
           events.emit("player:oxygen:changed", pc.oxygen, pc.maxOxygen);
+          // Vasquez's arc cutter — the run's power-up lives in the cache
+          pc.hasCutter = true;
+          events.emit(
+            "log:message",
+            "ARC CUTTER SALVAGED — HOLD [LMB] TO FIRE",
+            "success",
+          );
         }
         events.emit("log:message", "SUPPLY CACHE RECOVERED — O₂ +25%", "success");
         window.setTimeout(() => this.startAct(1), 2600);
@@ -203,6 +217,14 @@ class MissionManager {
         events.emit("log:message", "ATMOSPHERIC COLLAPSE — SUIT INTEGRITY LOST", "danger");
         return;
       }
+
+      // The storm hunts: spawn pursuers along the evac run. Killing them
+      // drops the O₂ that keeps the sprint alive.
+      this.evacSpawnTimer -= dt;
+      if (this.evacSpawnTimer <= 0) {
+        this.evacSpawnTimer = 22;
+        if (player.playerControl?.hasCutter) spawnWave(2, playerPos);
+      }
     }
 
     // Throttled HUD refresh (~4Hz is plenty for a distance readout)
@@ -229,6 +251,7 @@ class MissionManager {
 
     if (index === 2) {
       missionState.evacActive = true;
+      this.evacSpawnTimer = 9; // breather after the final arena before pursuit starts
       this.objectivePanel.classList.add("objective-evac");
       events.emit("log:message", "STORM FRONT INBOUND — RETURN TO THE DROPSHIP", "danger");
       audioManager.playLowOxygenWarning();
@@ -261,6 +284,7 @@ class MissionManager {
   private onWin() {
     this.ended = true;
     this.objectivePanel.style.display = "none";
+    clearCreatures();
 
     const screen = document.getElementById("mission-complete-screen");
     const content = screen?.querySelector(".overlay-content");
@@ -276,6 +300,7 @@ class MissionManager {
     statsDiv.innerHTML = [
       `<div><span>SURFACE TIME</span><span>${mm}:${ss}</span></div>`,
       `<div><span>DISTANCE COVERED</span><span>${Math.round(this.stats.distance)}m</span></div>`,
+      `<div><span>STORM-SPAWN DOWN</span><span>${this.stats.kills}</span></div>`,
       `<div><span>O₂ RECOVERED</span><span>${Math.round(this.stats.o2Collected)}%</span></div>`,
       `<div><span>MERIDIAN LOGS</span><span>${this.stats.padsFound}/${DATA_PADS.length}</span></div>`,
     ].join("");
