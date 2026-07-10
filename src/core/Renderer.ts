@@ -39,14 +39,19 @@ export class Renderer {
     const canvas = document.createElement("canvas");
     appElement.appendChild(canvas);
 
+    // No MSAA: every frame goes through the EffectComposer's render targets,
+    // so the canvas multisample buffer costs memory/fill and is never seen —
+    // FXAA in the composer chain does the edge smoothing instead.
     this.renderer = new THREE.WebGLRenderer({
       canvas,
-      antialias: true,
+      antialias: false,
       powerPreference: "high-performance",
     });
 
     this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    // 1.5 cap: at DPR 2 the composer runs 4 full-screen passes over 4x the
+    // pixels — the single biggest fill-rate cost on high-DPI screens.
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
 
     // Enable shadow maps
     this.renderer.shadowMap.enabled = true;
@@ -54,7 +59,7 @@ export class Renderer {
 
     // Tone mapping for HDR-like visuals
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.2;
+    this.renderer.toneMappingExposure = 1.05;
 
     // Post-Processing Pipeline
     this.composer = new EffectComposer(this.renderer);
