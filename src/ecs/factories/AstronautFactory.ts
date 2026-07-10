@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { suitTexture } from "../../utils/ProceduralTexture";
 
 /**
  * Procedural astronaut built from primitives, with a lightweight pose rig
@@ -15,6 +16,8 @@ export interface AstronautState {
   grounded: boolean;
   isSprinting: boolean;
   isJetpacking: boolean;
+  hasCutter: boolean;
+  isAiming: boolean;
 }
 
 export interface AstronautRig {
@@ -29,6 +32,8 @@ export interface AstronautRig {
   thrustLight: THREE.PointLight;
   nozzleL: THREE.Object3D;
   nozzleR: THREE.Object3D;
+  cutter: THREE.Group;
+  cutterTip: THREE.Object3D;
   walkPhase: number;
   idlePhase: number;
   lastStepSign: number;
@@ -37,8 +42,11 @@ export interface AstronautRig {
 const HIP_HEIGHT = 0.85;
 
 export function createAstronaut(): { model: THREE.Group; rig: AstronautRig } {
+  const suit = suitTexture();
   const suitMat = new THREE.MeshStandardMaterial({
-    color: 0xd8d3c8, // off-white EVA fabric
+    map: suit.map, // quilted off-white EVA fabric
+    bumpMap: suit.bump,
+    bumpScale: 0.006,
     roughness: 0.75,
     metalness: 0.05,
   });
@@ -183,6 +191,37 @@ export function createAstronaut(): { model: THREE.Group; rig: AstronautRig } {
   const leftArm = makeArm(-1);
   const rightArm = makeArm(1);
 
+  // --- Arc cutter (hidden until salvaged at the cache) ---
+  // Built along the arm's -Y axis so raising the arm points it forward.
+  const cutter = new THREE.Group();
+  cutter.position.set(0, -0.6, 0);
+  const cutterBody = new THREE.Mesh(
+    new THREE.BoxGeometry(0.07, 0.22, 0.09),
+    gearMat,
+  );
+  cutterBody.position.y = -0.06;
+  cutter.add(cutterBody);
+  const cutterGrip = new THREE.Mesh(
+    new THREE.BoxGeometry(0.05, 0.09, 0.06),
+    accentMat,
+  );
+  cutterGrip.position.set(0, 0.02, 0.05);
+  cutter.add(cutterGrip);
+  const cutterEmitter = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.025, 0.035, 0.14, 8),
+    gearMat,
+  );
+  cutterEmitter.position.y = -0.22;
+  cutter.add(cutterEmitter);
+  const cutterTip = new THREE.Mesh(
+    new THREE.SphereGeometry(0.028, 8, 8),
+    new THREE.MeshBasicMaterial({ color: 0x88ffee }),
+  );
+  cutterTip.position.y = -0.3;
+  cutter.add(cutterTip);
+  cutter.visible = false;
+  rightArm.add(cutter);
+
   // --- Head (pivot at the neck) ---
   const head = new THREE.Group();
   head.position.y = 0.58;
@@ -218,6 +257,8 @@ export function createAstronaut(): { model: THREE.Group; rig: AstronautRig } {
     thrustLight,
     nozzleL,
     nozzleR,
+    cutter,
+    cutterTip,
     walkPhase: 0,
     idlePhase: 0,
     lastStepSign: 0,
@@ -242,6 +283,7 @@ export function updateAstronautRig(
 ): boolean {
   const { horizontalSpeed, verticalSpeed, grounded, isJetpacking } = state;
   rig.idlePhase += delta * 1.8;
+  rig.cutter.visible = state.hasCutter;
 
   const moving = grounded && horizontalSpeed > 0.5;
   let footstep = false;
@@ -302,12 +344,18 @@ export function updateAstronautRig(
     headTilt = Math.sin(rig.idlePhase * 0.6) * 0.05;
   }
 
+  // Aiming overrides the right arm: raised, pointing where the camera looks
+  if (state.isAiming && state.hasCutter) {
+    armSwingR = 1.5;
+  }
+
   // Damped application — poses blend instead of snapping
   const R = 12;
+  const RArm = state.isAiming ? 22 : R; // aim snaps up fast
   rig.leftLeg.rotation.x = damp(rig.leftLeg.rotation.x, legSwingL, R, delta);
   rig.rightLeg.rotation.x = damp(rig.rightLeg.rotation.x, legSwingR, R, delta);
   rig.leftArm.rotation.x = damp(rig.leftArm.rotation.x, armSwingL, R, delta);
-  rig.rightArm.rotation.x = damp(rig.rightArm.rotation.x, armSwingR, R, delta);
+  rig.rightArm.rotation.x = damp(rig.rightArm.rotation.x, armSwingR, RArm, delta);
   rig.torso.rotation.x = damp(rig.torso.rotation.x, torsoLean, R, delta);
   rig.torso.position.y = damp(rig.torso.position.y, HIP_HEIGHT + torsoBob, R, delta);
   rig.head.rotation.x = damp(rig.head.rotation.x, headTilt, R, delta);
