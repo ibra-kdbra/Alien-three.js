@@ -259,26 +259,29 @@ export class UIManager {
     };
     checkSprint();
 
-    // 10. Performance Mode Toggle
+    // 10. Quality preset cycle (HIGH → MEDIUM → LOW)
     if (this.btnPerfToggle) {
+      const paint = () => {
+        const q = renderer.quality;
+        this.btnPerfToggle.textContent = `QUALITY: ${q.toUpperCase()}`;
+        const warm = q !== "high";
+        this.btnPerfToggle.style.color = warm ? "#ff8833" : "var(--astra-cyan)";
+        this.btnPerfToggle.style.border = warm
+          ? "1px solid rgba(255, 136, 51, 0.4)"
+          : "1px solid var(--astra-cyan-dim)";
+        this.btnPerfToggle.style.background = warm
+          ? "rgba(255, 136, 51, 0.06)"
+          : "rgba(0, 255, 204, 0.06)";
+      };
+      // Reflect a restored/auto-detected tier once things settle
+      setTimeout(paint, 1200);
+
       this.btnPerfToggle.addEventListener("click", (e) => {
         e.stopPropagation();
-        
-        const nextMode = !renderer.performanceMode;
-        renderer.setPerformanceMode(nextMode);
-        
-        if (nextMode) {
-          this.btnPerfToggle.textContent = "PERFORMANCE MODE: ON";
-          this.btnPerfToggle.style.color = "#ff8833";
-          this.btnPerfToggle.style.border = "1px solid rgba(255, 136, 51, 0.4)";
-          this.btnPerfToggle.style.background = "rgba(255, 136, 51, 0.06)";
-        } else {
-          this.btnPerfToggle.textContent = "PERFORMANCE MODE: OFF";
-          this.btnPerfToggle.style.color = "var(--astra-cyan)";
-          this.btnPerfToggle.style.border = "1px solid var(--astra-cyan-dim)";
-          this.btnPerfToggle.style.background = "rgba(0, 255, 204, 0.06)";
-        }
-        
+        const next =
+          renderer.quality === "high" ? "medium" : renderer.quality === "medium" ? "low" : "high";
+        renderer.setQuality(next);
+        paint();
         audioManager.playUIClick();
       });
     }
