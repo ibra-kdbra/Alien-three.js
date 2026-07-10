@@ -26,4 +26,7 @@ export const queries = {
 
   // Oxygen canister pickups
   pickups: world.with("isPickup", "object3d", "pickup"),
+
+  // Storm-spawn creatures
+  creatures: world.with("isCreature", "object3d", "creature"),
 };
