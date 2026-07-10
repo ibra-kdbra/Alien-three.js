@@ -944,3 +944,10 @@ body {
   color: rgba(232, 255, 248, 0.6);
   font-style: italic;
 }
+
+/* --- Arc cutter heat bar --- */
+
+.cutter-bar {
+  background: linear-gradient(90deg, #88ffee, #44ddcc);
+  box-shadow: 0 0 8px rgba(136, 255, 238, 0.2);
+}
