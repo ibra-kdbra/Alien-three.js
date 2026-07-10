@@ -40,13 +40,12 @@ export type Entity = {
     yaw?: number;
     pitch?: number;
     velocity: { x: number; y: number; z: number }; // Used to store momentum for KCC
-    cameraMode?: "Follow" | "Orbit" | "Action";
+    cameraMode?: "Explore" | "Focus";
     oxygen: number;
     maxOxygen: number;
     isSprinting?: boolean;
     jetpackFuel?: number;
     maxJetpackFuel?: number;
-    cameraDistance?: number;
     isJetpacking?: boolean;
   };
 
@@ -60,11 +59,13 @@ export type Entity = {
     pulsePhase: number;
   };
 
-  // Oxygen canister pickup
+  // Collectible: oxygen canister or a Meridian crew data pad
   pickup?: {
     amount: number; // oxygen restored on collect
     collected: boolean;
     bobPhase: number;
+    kind?: "o2" | "datapad";
+    loreIndex?: number; // index into the data-pad lore table
   };
 
   // Hazard data
