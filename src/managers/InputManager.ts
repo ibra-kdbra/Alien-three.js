@@ -9,7 +9,8 @@ export type InputAction =
   | "action"
   | "free_look"
   | "camera_mode"
-  | "scanner";
+  | "scanner"
+  | "fire";
 
 export class InputManager {
   private keys: Record<string, boolean> = {};
@@ -37,6 +38,16 @@ export class InputManager {
     document.addEventListener("pointerlockchange", this.onPointerLockChange);
     document.addEventListener("mousemove", this.onMouseMove);
     document.addEventListener("wheel", this.onWheel, { passive: true });
+    document.addEventListener("mousedown", (e) => {
+      // Fire only counts in-game (pointer locked), never on menus
+      if (e.button === 0 && this.pointerLocked) {
+        this.fireHeld = true;
+        this.pressedActions.add("fire");
+      }
+    });
+    document.addEventListener("mouseup", (e) => {
+      if (e.button === 0) this.fireHeld = false;
+    });
 
     // Auto lock on canvas click
     document.addEventListener("click", (e) => {
@@ -75,6 +86,7 @@ export class InputManager {
 
   // Mouse handling
   public pointerLocked: boolean = false;
+  private fireHeld = false;
   // Accumulate mouse movement between frames (don't overwrite!)
   public mouseDelta = { x: 0, y: 0 };
   public scrollDelta = 0;
@@ -107,6 +119,7 @@ export class InputManager {
 
   // Returns 0 or 1 for now (could be extended for analog sticks)
   public getAction(action: InputAction): number {
+    if (action === "fire") return this.fireHeld && this.pointerLocked ? 1.0 : 0.0;
     for (const [key, mappedAction] of Object.entries(this.keyMap)) {
       if (mappedAction === action && this.keys[key]) {
         return 1.0;
