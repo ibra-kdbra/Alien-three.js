@@ -5,6 +5,7 @@ import { renderer } from "../../core/Renderer";
 import { events } from "../../utils/EventBus";
 import { audioManager } from "../../managers/AudioManager";
 import { gameState } from "../../core/GameState";
+import { updateAstronautRig, type AstronautRig } from "../factories/AstronautFactory";
 
 /**
  * Spherical-gravity kinematic character controller.
@@ -23,10 +24,11 @@ const JUMP_SPEED = 7.5; // initial jump velocity along the normal
 const JUMP_BUFFER_TIME = 0.15; // press jump slightly before landing → still jumps
 const COYOTE_TIME = 0.12; // jump slightly after walking off a ledge → still jumps
 const GROUND_ACCEL_RATE = 12.0; // exponential approach rate toward target velocity
-const AIR_ACCEL_RATE = 2.2; // reduced control while airborne
+const AIR_ACCEL_RATE = 4.5; // air control: enough to steer a jetpack arc
 const GROUND_STICK_SPEED = 2.5; // constant downward bias to hug slopes
-const JETPACK_TARGET_RISE = 5.5; // sustained climb speed
-const JETPACK_RESPONSE = 5.0; // how quickly thrust ramps in
+const JETPACK_ACCEL = 30.0; // thrust as acceleration — overcomes gravity, feels punchy
+const JETPACK_MAX_RISE = 6.5; // climb speed ceiling
+const LANDING_EVENT_SPEED = 5.0; // min impact speed to fire "player:land"
 const JETPACK_DRAIN = 38.0; // fuel per second while thrusting
 const JETPACK_REGEN = 30.0; // fuel per second while grounded
 const JETPACK_MIN_ENGAGE = 10.0; // don't sputter on an empty tank
@@ -178,9 +180,11 @@ export function updateCharacterSystem(dt: number) {
     (wasJetpacking || fuel >= JETPACK_MIN_ENGAGE) &&
     (wasJetpacking || vertical < JUMP_SPEED * 0.5)
   ) {
-    // Jetpack: hold Space while airborne (engages past the jump's rise)
+    // Jetpack: hold Space while airborne (engages past the jump's rise).
+    // Thrust is an acceleration, so it fights falls before reversing them —
+    // catching yourself mid-drop feels like a rocket, not an elevator.
     isJetpacking = true;
-    vertical = THREE.MathUtils.lerp(vertical, JETPACK_TARGET_RISE, 1 - Math.exp(-JETPACK_RESPONSE * dt));
+    vertical = Math.min(vertical + JETPACK_ACCEL * dt, JETPACK_MAX_RISE);
     playerControl.jetpackFuel = Math.max(0, fuel - JETPACK_DRAIN * dt);
     events.emit("player:fuel:changed", playerControl.jetpackFuel, playerControl.maxJetpackFuel ?? 100);
   }
@@ -220,6 +224,12 @@ export function updateCharacterSystem(dt: number) {
     z: _pos.z + moved.z,
   });
   playerControl.grounded = kcc.computedGrounded();
+
+  // Landing impact: airborne → grounded while falling fast enough.
+  // Consumers (camera shake, dust burst, thud SFX) scale with the speed.
+  if (!grounded && playerControl.grounded && vertical < -LANDING_EVENT_SPEED) {
+    events.emit("player:land", -vertical);
+  }
 
   charDiag.ticks++;
   charDiag.desired = { x: _vel.x * dt, y: _vel.y * dt, z: _vel.z * dt };
@@ -271,69 +281,37 @@ export function updateCharacterSystem(dt: number) {
 
 /**
  * Render-phase visuals: smooth mesh rotation toward the heading and drive
- * the animation state machine. Runs with the render delta for smoothness.
+ * the astronaut pose rig. Runs with the render delta for smoothness.
  */
 export function updateCharacterVisuals(delta: number) {
   const player = queries.player.first;
   if (!player) return;
 
-  const { playerControl, object3d, animation } = player;
+  const { playerControl, object3d } = player;
   if (!object3d) return;
 
   object3d.quaternion.slerp(targetOrientation, 1 - Math.exp(-14 * delta));
 
-  if (!animation) return;
+  const rig = object3d.userData.rig as AstronautRig | undefined;
+  if (!rig) return;
 
-  // Derive animation state from simulation velocity
+  // Derive pose state from simulation velocity
   _vel.set(playerControl.velocity.x, playerControl.velocity.y, playerControl.velocity.z);
   _normal.copy(object3d.position).normalize();
   const verticalSpeed = _vel.dot(_normal);
   _horizontal.copy(_vel).addScaledVector(_normal, -verticalSpeed);
   const horizontalSpeed = _horizontal.length();
 
-  let nextAction = "Idle";
-  if (!playerControl.grounded && Math.abs(verticalSpeed) > 1.5) {
-    nextAction = "Jump";
-  } else if (horizontalSpeed > 0.5) {
-    nextAction = playerControl.isSprinting && horizontalSpeed > 5.0 ? "Running" : "Walking";
-  }
-
-  if (animation.currentAction !== nextAction) {
-    const prevAction = animation.actions[animation.currentAction!];
-    const newAction = animation.actions[nextAction];
-    if (newAction) {
-      if (prevAction) prevAction.fadeOut(0.2);
-      newAction.reset().fadeIn(0.2).play();
-      animation.currentAction = nextAction;
-    } else {
-      // Single-clip models (e.g. CesiumMan): reuse the one loop for all motion
-      const singleActionName = Object.keys(animation.actions)[0];
-      if (singleActionName && animation.currentAction !== singleActionName) {
-        const singleAction = animation.actions[singleActionName];
-        if (singleAction) {
-          if (prevAction) prevAction.fadeOut(0.2);
-          singleAction.reset().fadeIn(0.2).play();
-          animation.currentAction = singleActionName;
-        }
-      }
-    }
-  }
-
-  if (animation.actions[nextAction] === undefined) {
-    const singleActionName = Object.keys(animation.actions)[0];
-    if (singleActionName) {
-      const singleAction = animation.actions[singleActionName];
-      if (singleAction) {
-        if (horizontalSpeed < 0.2) {
-          singleAction.paused = true;
-        } else {
-          singleAction.paused = false;
-          animation.mixer.timeScale = Math.max(0.5, horizontalSpeed / 4.0);
-        }
-      }
-    }
-  } else {
-    animation.mixer.timeScale = nextAction === "Idle" ? 1.0 : Math.max(0.5, horizontalSpeed / 5.0);
-  }
-  animation.mixer.update(delta);
+  const footstep = updateAstronautRig(
+    rig,
+    {
+      horizontalSpeed,
+      verticalSpeed,
+      grounded: playerControl.grounded,
+      isSprinting: !!playerControl.isSprinting,
+      isJetpacking: !!playerControl.isJetpacking,
+    },
+    delta,
+  );
+  if (footstep) events.emit("player:footstep");
 }
