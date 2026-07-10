@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="ASTRA: LOST SIGNAL — A sci-fi exploration game. Locate signal beacons on an alien planet before your oxygen runs out." />
+    <meta name="description" content="ASTRA: LOST SIGNAL — A sci-fi survival adventure. Three years ago the Meridian survey team went dark on this planet. Bring their relay network online, hear what happened to them, and leave before the sky closes." />
     <title>ASTRA: LOST SIGNAL</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -38,7 +38,7 @@
         <div class="panel-corner tr"></div>
         <h2 class="glitch" data-text="ASTRA OS v2.4">ASTRA OS v2.4</h2>
         <div class="subtext">PLANETARY RECONNAISSANCE</div>
-        <div class="subtext dim" id="camera-mode-display">CAM: FOLLOW</div>
+        <div class="subtext dim" id="camera-mode-display">CAM: EXPLORE</div>
       </div>
 
       <!-- Top Right: Mission Log -->
@@ -47,8 +47,8 @@
         <div class="panel-corner tr"></div>
         <div class="panel-title">MISSION LOG</div>
         <div id="mission-log">
-          <div class="msg info">SIGNAL ACQUISITION IN PROGRESS...</div>
-          <div class="msg warn">BEACON 0/3 LOCATED</div>
+          <div class="msg info">DESCENT COMPLETE — HULL INTACT</div>
+          <div class="msg danger">SIGNAL ARRAY: DESTROYED</div>
         </div>
       </div>
 
@@ -96,6 +96,7 @@
           <div class="key-row"><span class="key">SHIFT</span> SPRINT</div>
           <div class="key-row"><span class="key">SPACE</span> JUMP / JETPACK</div>
           <div class="key-row"><span class="key">V</span> CAMERA</div>
+          <div class="key-row"><span class="key">C</span> SETTINGS</div>
           <div class="key-row"><span class="key">SCROLL</span> ZOOM</div>
         </div>
         <div class="perf-toggle-container" style="margin-top: 12px; pointer-events: auto;">
@@ -112,9 +113,9 @@
         <h1 class="glitch game-title" data-text="ASTRA">ASTRA</h1>
         <h2 class="subtitle">LOST SIGNAL</h2>
         <div class="mission-brief">
-          <p>Your dropship's signal relay is offline.</p>
-          <p>Locate <strong>3 signal beacons</strong> to restore contact.</p>
-          <p>Watch your <strong>oxygen</strong> — it won't last forever.</p>
+          <p>Three years ago, survey team <strong>MERIDIAN</strong> went dark on this planet.</p>
+          <p>Your signal array burned up on descent. Their old relay network is the only way to call home — <strong>bring it online</strong>.</p>
+          <p>Watch your <strong>O₂</strong>. And listen to what they left behind.</p>
         </div>
         <div class="start-prompt" id="start-prompt">
           <span class="blink">▶ CLICK TO BEGIN ◀</span>
@@ -144,7 +145,7 @@
     <div id="mission-complete-screen" style="display:none">
       <div class="overlay-content">
         <h1 class="glitch success-text" data-text="SIGNAL RESTORED">SIGNAL RESTORED</h1>
-        <p class="overlay-reason">ALL BEACONS LOCATED — EXTRACTION INBOUND</p>
+        <p class="overlay-reason">THE RELAY NETWORK CARRIES YOUR VOICE OFF-WORLD</p>
         <div class="overlay-prompt blink">MISSION COMPLETE</div>
       </div>
     </div>
