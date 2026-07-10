@@ -17,6 +17,8 @@ import { updatePickupSystem, updatePickupVisuals } from "../ecs/systems/PickupSy
 import { updateHazardVisuals } from "../ecs/factories/HazardFactory";
 import { updateParticleSystem } from "../ecs/systems/ParticleSystem";
 import { updateDropshipSystem } from "../ecs/systems/DropshipSystem";
+import { updateCreatureSystem } from "../ecs/systems/CreatureSystem";
+import { updateWeaponSystem, updateWeaponVisuals } from "../ecs/systems/WeaponSystem";
 import { updateMissionSystem } from "../managers/MissionManager";
 import { inputManager } from "../managers/InputManager";
 import { debugManager } from "../managers/DebugManager";
@@ -48,6 +50,7 @@ export class Engine {
   // Rolling frame-time stats for the perf probe (window.__astra.getPerf()).
   public frameMs = 0;
   public frameMsMax = 0;
+  public frames = 0; // total render frames (test scripts sync on this)
   private frameMsWindow = 0;
   private frameCount = 0;
 
@@ -82,6 +85,8 @@ export class Engine {
     updateOxygenSystem(dt);
     updatePickupSystem();
     updateDropshipSystem(dt, this.fixedElapsed);
+    updateCreatureSystem(dt, this.fixedElapsed);
+    updateWeaponSystem(dt);
     updateMissionSystem(dt);
 
     // 3. Physics step + transform snapshot for render interpolation
@@ -102,6 +107,7 @@ export class Engine {
     updateWaypointSystem();
     updateHazardVisuals(delta, elapsed);
     updatePickupVisuals(delta, elapsed);
+    updateWeaponVisuals(delta);
     updateParticleSystem(delta, elapsed);
 
     // 4. Player-following sun shadows
@@ -141,6 +147,7 @@ export class Engine {
 
     const alpha = this.accumulator / Engine.FIXED_DT;
     this.renderUpdate(delta, alpha, elapsed);
+    this.frames++;
 
     inputManager.resetMouseDelta();
 
