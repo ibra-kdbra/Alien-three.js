@@ -24,6 +24,7 @@ export interface GameEvents {
   // Mission Events
   "mission:complete": () => void;
   "mission:failed": (reason: string) => void;
+  "datapad:collected": (loreIndex: number) => void;
 
   // Game State
   "game:start": () => void;
