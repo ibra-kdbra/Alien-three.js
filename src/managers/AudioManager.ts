@@ -1,3 +1,5 @@
+import { events } from "../utils/EventBus";
+
 class AudioManager {
   private ctx: AudioContext | null = null;
   private isInitialized = false;
@@ -5,9 +7,23 @@ class AudioManager {
   // Nodes
   private ambientGain: GainNode | null = null;
   private jetpackGain: GainNode | null = null;
-  
+  private noiseBuffer: AudioBuffer | null = null;
+
   // States
   private isJetpacking = false;
+
+  constructor() {
+    // Feel SFX are event-driven; every handler no-ops until init() runs
+    // (which happens on the start-screen click, satisfying autoplay policy).
+    events.on("player:footstep", () => this.playFootstep());
+    events.on("player:land", (impactSpeed) =>
+      this.playLanding(Math.min(1, impactSpeed / 20)),
+    );
+    events.on("player:jump", () => this.playJump());
+    events.on("pickup:collected", () => this.playPickup());
+    events.on("datapad:collected", () => this.playPickup());
+    events.on("beacon:collected", () => this.playBeaconActivate());
+  }
 
   public init() {
     if (this.isInitialized) return;
@@ -160,6 +176,156 @@ class AudioManager {
     
     osc.start();
     osc.stop(this.ctx.currentTime + 0.4);
+  }
+
+  /** Cached 0.3s white-noise buffer shared by the percussive SFX. */
+  private getNoiseBuffer(): AudioBuffer | null {
+    if (!this.ctx) return null;
+    if (!this.noiseBuffer) {
+      const len = Math.floor(this.ctx.sampleRate * 0.3);
+      this.noiseBuffer = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+      const data = this.noiseBuffer.getChannelData(0);
+      for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+    }
+    return this.noiseBuffer;
+  }
+
+  /** Short filtered noise tap — regolith crunch underfoot. */
+  public playFootstep() {
+    if (!this.ctx) return;
+    const buffer = this.getNoiseBuffer();
+    if (!buffer) return;
+
+    const src = this.ctx.createBufferSource();
+    src.buffer = buffer;
+
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = "bandpass";
+    filter.frequency.value = 320 + Math.random() * 280; // vary each step
+    filter.Q.value = 1.2;
+
+    const gain = this.ctx.createGain();
+    const t = this.ctx.currentTime;
+    gain.gain.setValueAtTime(0.07, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
+
+    src.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.ctx.destination);
+    src.start(t);
+    src.stop(t + 0.1);
+  }
+
+  /** Weighty thump scaled by impact: low sine drop + noise crunch. */
+  public playLanding(intensity: number) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+
+    const osc = this.ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(90, t);
+    osc.frequency.exponentialRampToValueAtTime(38, t + 0.2);
+
+    const oscGain = this.ctx.createGain();
+    oscGain.gain.setValueAtTime(0.25 * intensity, t);
+    oscGain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+
+    osc.connect(oscGain);
+    oscGain.connect(this.ctx.destination);
+    osc.start(t);
+    osc.stop(t + 0.3);
+
+    const buffer = this.getNoiseBuffer();
+    if (buffer) {
+      const src = this.ctx.createBufferSource();
+      src.buffer = buffer;
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = "lowpass";
+      filter.frequency.value = 500;
+      const gain = this.ctx.createGain();
+      gain.gain.setValueAtTime(0.12 * intensity, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
+      src.connect(filter);
+      filter.connect(gain);
+      gain.connect(this.ctx.destination);
+      src.start(t);
+      src.stop(t + 0.16);
+    }
+  }
+
+  /** Airy upward whoosh on takeoff. */
+  public playJump() {
+    if (!this.ctx) return;
+    const buffer = this.getNoiseBuffer();
+    if (!buffer) return;
+    const t = this.ctx.currentTime;
+
+    const src = this.ctx.createBufferSource();
+    src.buffer = buffer;
+
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = "bandpass";
+    filter.frequency.setValueAtTime(400, t);
+    filter.frequency.exponentialRampToValueAtTime(1100, t + 0.15);
+    filter.Q.value = 2.0;
+
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(0.06, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+
+    src.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.ctx.destination);
+    src.start(t);
+    src.stop(t + 0.2);
+  }
+
+  /** Bright two-note chime for oxygen canisters. */
+  public playPickup() {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    [660, 990].forEach((freq, i) => {
+      const osc = this.ctx!.createOscillator();
+      const gain = this.ctx!.createGain();
+      osc.type = "sine";
+      osc.frequency.value = freq;
+      const start = t + i * 0.09;
+      gain.gain.setValueAtTime(0.12, start);
+      gain.gain.exponentialRampToValueAtTime(0.001, start + 0.25);
+      osc.connect(gain);
+      gain.connect(this.ctx!.destination);
+      osc.start(start);
+      osc.stop(start + 0.3);
+    });
+  }
+
+  /** Rising triad with echo — a beacon coming online is a big moment. */
+  public playBeaconActivate() {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+
+    const delay = this.ctx.createDelay();
+    delay.delayTime.value = 0.25;
+    const feedback = this.ctx.createGain();
+    feedback.gain.value = 0.35;
+    delay.connect(feedback);
+    feedback.connect(delay);
+    delay.connect(this.ctx.destination);
+
+    [440, 554, 659, 880].forEach((freq, i) => {
+      const osc = this.ctx!.createOscillator();
+      const gain = this.ctx!.createGain();
+      osc.type = "triangle";
+      osc.frequency.value = freq;
+      const start = t + i * 0.12;
+      gain.gain.setValueAtTime(0.14, start);
+      gain.gain.exponentialRampToValueAtTime(0.001, start + 0.5);
+      osc.connect(gain);
+      gain.connect(this.ctx!.destination);
+      gain.connect(delay);
+      osc.start(start);
+      osc.stop(start + 0.55);
+    });
   }
 
   public playUIClick() {
