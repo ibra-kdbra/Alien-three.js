@@ -23,6 +23,7 @@ export type Entity = {
   isHazard?: boolean;
   isDropship?: boolean;
   isPickup?: boolean;
+  isCreature?: boolean;
 
   dropship?: {
     activated: boolean;
@@ -47,6 +48,7 @@ export type Entity = {
     jetpackFuel?: number;
     maxJetpackFuel?: number;
     isJetpacking?: boolean;
+    hasCutter?: boolean; // arc cutter salvaged at the supply cache
   };
 
   // Respawn anchor + kill-radius for fell-through-world recovery
@@ -57,6 +59,7 @@ export type Entity = {
     collected: boolean;
     signalBoost: number;
     pulsePhase: number;
+    booting?: boolean; // arena wave in progress; node comes online when it's cleared
   };
 
   // Collectible: oxygen canister or a Meridian crew data pad
@@ -66,6 +69,18 @@ export type Entity = {
     bobPhase: number;
     kind?: "o2" | "datapad";
     loreIndex?: number; // index into the data-pad lore table
+  };
+
+  // Storm-spawn: crystalline creatures that drain O₂ on contact
+  creature?: {
+    hp: number;
+    maxHp: number;
+    state: "burrow" | "hunt" | "telegraph" | "lunge" | "dying";
+    stateTime: number; // seconds in the current state
+    speed: number;
+    phase: number; // animation phase offset
+    lungeDir?: { x: number; y: number; z: number };
+    hitFlash: number; // seconds of damage flash remaining
   };
 
   // Hazard data
