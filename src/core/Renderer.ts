@@ -8,6 +8,8 @@ import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import chromaticFragmentShader from "../shaders/chromatic.fragment.glsl?raw";
 import { queries } from "../ecs/World";
 
+export type QualityPreset = "low" | "medium" | "high";
+
 export class Renderer {
   public renderer: THREE.WebGLRenderer;
   public scene: THREE.Scene;
@@ -111,46 +113,72 @@ export class Renderer {
     this.composer.addPass(outputPass);
 
     window.addEventListener("resize", this.onResize.bind(this));
+
+    // Restore the player's saved quality tier (auto-detect only runs when
+    // nothing is stored — see main.ts)
+    try {
+      const stored = localStorage.getItem("astra.quality") as QualityPreset | null;
+      if (stored === "low" || stored === "medium" || stored === "high") {
+        // Defer: the sun light doesn't exist yet during construction
+        setTimeout(() => this.setQuality(stored), 0);
+      }
+    } catch {
+      /* private browsing */
+    }
   }
 
   private bloomPass: UnrealBloomPass;
   private fxaaPass: ShaderPass;
   private chromaticPass: ShaderPass;
-  public performanceMode = false;
+  public performanceMode = false; // true when quality === "low" (legacy flag)
+  public quality: QualityPreset = "high";
   private elapsed = 0;
 
-  public setPerformanceMode(enabled: boolean) {
-    this.performanceMode = enabled;
+  /**
+   * Quality tiers — each step trades the most expensive remaining feature:
+   *   high:   DPR ≤1.5, bloom, chromatic, 2048² soft shadows
+   *   medium: DPR ≤1.25, bloom, chromatic, 1024² shadows
+   *   low:    DPR ≤1.0, FXAA only, no shadows
+   */
+  public setQuality(preset: QualityPreset) {
+    this.quality = preset;
+    this.performanceMode = preset === "low";
+    const low = preset === "low";
 
-    // Toggle post-processing passes
-    if (this.bloomPass) this.bloomPass.enabled = !enabled;
-    if (this.fxaaPass) this.fxaaPass.enabled = !enabled;
+    // Pixel ratio (the single biggest fill-rate lever)
+    const dprCap = preset === "high" ? 1.5 : preset === "medium" ? 1.25 : 1.0;
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, dprCap));
+    this.composer.setPixelRatio(this.renderer.getPixelRatio());
+    this.onResize();
 
-    // Toggle renderer shadow map
-    this.renderer.shadowMap.enabled = !enabled;
+    // Post chain
+    if (this.bloomPass) this.bloomPass.enabled = !low;
+    if (this.chromaticPass) this.chromaticPass.enabled = !low;
+    if (this.fxaaPass) this.fxaaPass.enabled = true; // cheap, always worth it
 
-    // Toggle shadow casting on scene lights and meshes
+    // Shadows
+    this.renderer.shadowMap.enabled = !low;
     const sunLight = this.scene.getObjectByName("SunLight");
-    if (sunLight && sunLight instanceof THREE.DirectionalLight) {
-      sunLight.castShadow = !enabled;
-    }
-
-    this.scene.traverse((child) => {
-      if (child instanceof THREE.Mesh) {
-        // Rocks and other meshes don't cast or receive shadows in performance mode
-        child.castShadow = !enabled;
-        child.receiveShadow = !enabled;
-        if (child.material) {
-          if (Array.isArray(child.material)) {
-            child.material.forEach((m) => (m.needsUpdate = true));
-          } else {
-            child.material.needsUpdate = true;
-          }
-        }
+    if (sunLight instanceof THREE.DirectionalLight) {
+      sunLight.castShadow = !low;
+      const size = preset === "high" ? 2048 : 1024;
+      if (sunLight.shadow.mapSize.x !== size) {
+        sunLight.shadow.mapSize.set(size, size);
+        sunLight.shadow.map?.dispose();
+        sunLight.shadow.map = null;
       }
-    });
+    }
+    try {
+      localStorage.setItem("astra.quality", preset);
+    } catch {
+      /* private browsing */
+    }
+    console.log(`Quality: ${preset.toUpperCase()}`);
+  }
 
-    console.log(`Performance Mode: ${enabled ? "ON" : "OFF"}`);
+  /** Legacy toggle kept for the HUD button pathway. */
+  public setPerformanceMode(enabled: boolean) {
+    this.setQuality(enabled ? "low" : "high");
   }
 
   private onResize() {
