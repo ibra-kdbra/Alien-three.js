@@ -84,14 +84,24 @@ function createHazard(
     group.add(gas);
   }
 
-  // Eerie point light
-  const light = new THREE.PointLight(0xaaff00, 4, radius * 2);
-  light.position.y = 1.0;
-  light.castShadow = false;
-  group.add(light);
+  // No PointLight here: five extra lights made every MeshStandardMaterial
+  // fragment on screen more expensive. An emissive ground dome carries the
+  // eerie glow for free instead.
+  const glowGeo = new THREE.SphereGeometry(radius * 0.45, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2);
+  const glowMat = new THREE.MeshBasicMaterial({
+    color: 0x99ff22,
+    transparent: true,
+    opacity: 0.1,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.BackSide,
+  });
+  const glow = new THREE.Mesh(glowGeo, glowMat);
+  glow.position.y = 0.1;
+  group.add(glow);
 
   // Store animation refs
-  group.userData = { disc, ring, light, radius };
+  group.userData = { disc, ring, glow, radius };
 
   renderer.scene.add(group);
 
@@ -116,9 +126,9 @@ export function updateHazardVisuals(delta: number, elapsed: number) {
     const ud = hazard.object3d.userData;
     const t = elapsed + hazard.hazard.pulsePhase;
 
-    // Pulse glow
-    if (ud.light) {
-      ud.light.intensity = 3 + Math.sin(t * 1.5) * 2;
+    // Pulse glow dome
+    if (ud.glow) {
+      ud.glow.material.opacity = 0.08 + Math.sin(t * 1.5) * 0.05;
     }
 
     // Disc opacity pulse
