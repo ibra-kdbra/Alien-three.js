@@ -23,4 +23,7 @@ export const queries = {
 
   // Dropships
   dropships: world.with("isDropship", "object3d", "dropship"),
+
+  // Oxygen canister pickups
+  pickups: world.with("isPickup", "object3d", "pickup"),
 };
