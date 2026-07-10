@@ -328,6 +328,77 @@ class AudioManager {
     });
   }
 
+  /** Snappy descending zap for the arc cutter. */
+  public playArcFire() {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(1900, t);
+    osc.frequency.exponentialRampToValueAtTime(320, t + 0.09);
+    gain.gain.setValueAtTime(0.09, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.11);
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+    osc.start(t);
+    osc.stop(t + 0.12);
+  }
+
+  /** Low dissonant rumble-chirp when storm-spawn vent from the ground. */
+  public playCreatureAlert() {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    [92, 118].forEach((freq, i) => {
+      const osc = this.ctx!.createOscillator();
+      const gain = this.ctx!.createGain();
+      osc.type = "square";
+      osc.frequency.setValueAtTime(freq, t);
+      osc.frequency.exponentialRampToValueAtTime(freq * 1.6, t + 0.6);
+      gain.gain.setValueAtTime(0.0001, t + i * 0.05);
+      gain.gain.exponentialRampToValueAtTime(0.07, t + 0.15 + i * 0.05);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.8);
+      osc.connect(gain);
+      gain.connect(this.ctx!.destination);
+      osc.start(t);
+      osc.stop(t + 0.85);
+    });
+  }
+
+  /** Glassy shatter when a storm-spawn dies. */
+  public playCreatureDeath() {
+    if (!this.ctx) return;
+    const noise = this.getNoiseBuffer();
+    if (!noise) return;
+    const t = this.ctx.currentTime;
+    const src = this.ctx.createBufferSource();
+    src.buffer = noise;
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = "highpass";
+    filter.frequency.setValueAtTime(2400, t);
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(0.14, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+    src.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.ctx.destination);
+    src.start(t);
+    src.stop(t + 0.32);
+
+    // A falling chime under the shatter
+    const osc = this.ctx.createOscillator();
+    const og = this.ctx.createGain();
+    osc.type = "triangle";
+    osc.frequency.setValueAtTime(1320, t);
+    osc.frequency.exponentialRampToValueAtTime(440, t + 0.25);
+    og.gain.setValueAtTime(0.08, t);
+    og.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
+    osc.connect(og);
+    og.connect(this.ctx.destination);
+    osc.start(t);
+    osc.stop(t + 0.3);
+  }
+
   public playUIClick() {
     if (!this.ctx) return;
     try {
