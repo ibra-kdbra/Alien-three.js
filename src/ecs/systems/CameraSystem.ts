@@ -73,6 +73,24 @@ events.on("player:land", (impactSpeed) => {
   shakeAmp = Math.min(0.35, 0.04 + impactSpeed * 0.018);
 });
 
+// Intro descent: the game opens ~330m above the pad and eases down onto the
+// shoulder — one uninterrupted shot that says "you are on a planet".
+const INTRO_DURATION = 7.0;
+const INTRO_HEIGHT = 330;
+let introRemaining = 0;
+events.on("game:start", () => {
+  introRemaining = INTRO_DURATION;
+});
+
+function easeOutCubic(t: number) {
+  return 1 - Math.pow(1 - t, 3);
+}
+
+/** Cut the intro short (used by tests; harmless mid-game). */
+export function skipIntro() {
+  introRemaining = 0;
+}
+
 const _velV = new THREE.Vector3();
 const _horiz = new THREE.Vector3();
 
@@ -195,7 +213,7 @@ export function updateCameraSystem(delta: number) {
       0,
       rayLen,
       true,
-      undefined,
+      RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,
       undefined,
       undefined,
       rigidBody,
@@ -227,11 +245,27 @@ export function updateCameraSystem(delta: number) {
 
   renderer.camera.position.set(smoothedShoulder + shakeX, HEAD_HEIGHT + shakeY, smoothedCamDist);
 
+  // --- Intro descent: swoop in from altitude on a diagonal, drifting yaw ---
+  // (diagonal keeps the view direction off the up axis so lookAt never rolls)
+  if (introRemaining > 0) {
+    introRemaining = Math.max(0, introRemaining - delta);
+    const p = 1 - introRemaining / INTRO_DURATION;
+    const drop = (1 - easeOutCubic(p)) * INTRO_HEIGHT;
+    renderer.camera.position.y += drop;
+    renderer.camera.position.z += drop * 0.45;
+    playerControl.yaw += delta * 0.1;
+  }
+
   // --- Look target: head position, leading into the movement direction ---
   _lookAt.set(smoothedShoulder + shakeX * 0.5, HEAD_HEIGHT + shakeY * 0.5, 0);
   cameraPivot.localToWorld(_lookAt);
   _lead.copy(_horiz);
   const leadLen = Math.min(_lead.length() * 0.06, 0.6);
   if (leadLen > 0.001) _lookAt.addScaledVector(_lead.normalize(), leadLen);
+
+  // lookAt() orients the roll axis toward camera.up, which defaults to world
+  // +Y. On a spherical planet that inverts the view in the southern
+  // hemisphere — the up hint must be the local planet normal every frame.
+  renderer.camera.up.copy(_normal);
   renderer.camera.lookAt(_lookAt);
 }
