@@ -101,6 +101,47 @@ export function createPickups(planetRadius: number) {
   }
 }
 
+// O₂ shards: dropped by killed storm-spawn. Aggression sustains the suit.
+const SHARD_OXYGEN = 8;
+let shardGeo: THREE.OctahedronGeometry | null = null;
+let shardMat: THREE.MeshStandardMaterial | null = null;
+let shardCounter = 0;
+
+export function createO2Shard(position: THREE.Vector3) {
+  if (!shardGeo) shardGeo = new THREE.OctahedronGeometry(0.18, 0);
+  if (!shardMat) {
+    shardMat = new THREE.MeshStandardMaterial({
+      color: 0x66eeff,
+      emissive: 0x33ddff,
+      emissiveIntensity: 2.2,
+      roughness: 0.15,
+    });
+  }
+
+  const dir = position.clone().normalize();
+  const group = new THREE.Group();
+  group.position.copy(position).addScaledVector(dir, 0.4);
+  group.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+
+  const shard = new THREE.Mesh(shardGeo, shardMat);
+  shard.scale.y = 1.6;
+  group.add(shard);
+
+  renderer.scene.add(group);
+
+  world.add({
+    name: `O2Shard_${shardCounter++}`,
+    isPickup: true,
+    object3d: group,
+    pickup: {
+      amount: SHARD_OXYGEN,
+      collected: false,
+      bobPhase: (shardCounter * 1.7) % (Math.PI * 2),
+      kind: "o2",
+    },
+  });
+}
+
 const DATAPAD_OXYGEN = 10;
 
 /**
