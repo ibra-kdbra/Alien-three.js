@@ -2,10 +2,15 @@ import * as THREE from "three";
 import { queries } from "../World";
 import { events } from "../../utils/EventBus";
 import { renderer } from "../../core/Renderer";
+import { missionState } from "../../managers/MissionManager";
 
 let totalBeacons = 3;
 let collectedCount = 0;
 let signalStrength = 0;
+
+// Non-objective relays idle at a fraction of full brightness; the current
+// target burns at full so the horizon always tells you where to go next.
+const IDLE_DIM = 0.22;
 
 export function updateBeaconSystem(delta: number, elapsed: number) {
   if (queries.player.entities.length === 0) return;
@@ -19,6 +24,8 @@ export function updateBeaconSystem(delta: number, elapsed: number) {
     const group = object3d as THREE.Group;
     const ud = group.userData;
     const t = elapsed + beacon.pulsePhase;
+    const isCurrent = ud.index === missionState.currentBeaconIndex;
+    const dim = isCurrent ? 1.0 : IDLE_DIM;
 
     // --- Animate beacon ---
     // Crystal bobbing and rotation
@@ -44,22 +51,30 @@ export function updateBeaconSystem(delta: number, elapsed: number) {
 
     // Light intensity pulsing
     if (ud.light) {
-      ud.light.intensity = 6 + Math.sin(t * 3.0) * 4;
+      ud.light.intensity = (6 + Math.sin(t * 3.0) * 4) * dim;
     }
 
     // Beam opacity pulsing
     if (ud.beam) {
-      ud.beam.material.opacity = 0.1 + Math.sin(t * 1.5) * 0.08;
+      ud.beam.material.opacity = (0.2 + Math.sin(t * 1.5) * 0.08) * dim;
+    }
+    if (ud.beamCore) {
+      ud.beamCore.material.opacity = (0.32 + Math.sin(t * 1.5) * 0.1) * dim;
     }
 
-    // --- Proximity collection ---
+    // --- Proximity collection (only the current objective node powers on) ---
     const dist = playerPos.distanceTo(object3d.position);
 
-    if (dist < 3.5) {
+    if (isCurrent && dist < 3.5) {
       // Collect the beacon
       beacon.collected = true;
       collectedCount++;
       signalStrength = Math.min(100, signalStrength + beacon.signalBoost);
+
+      // Drop the sky beams immediately — scaling a 300m additive beam up 4x
+      // during the collect animation would white out the whole screen.
+      if (ud.beam) ud.beam.visible = false;
+      if (ud.beamCore) ud.beamCore.visible = false;
 
       // Collection effect — scale up and fade out
       const collectAnim = { progress: 0 };
@@ -95,7 +110,7 @@ export function updateBeaconSystem(delta: number, elapsed: number) {
       events.emit("signal:strength:changed", signalStrength);
       events.emit(
         "log:message",
-        `BEACON ${collectedCount}/${totalBeacons} ACQUIRED — Signal +${Math.round(beacon.signalBoost)}%`,
+        `RELAY NODE ${collectedCount}/${totalBeacons} ONLINE — Signal +${Math.round(beacon.signalBoost)}%`,
         "success",
       );
 
@@ -112,12 +127,8 @@ export function updateBeaconSystem(delta: number, elapsed: number) {
         );
         events.emit("log:message", "O₂ RESERVES +25%", "info");
       }
-
-      // Check mission complete
-      if (collectedCount >= totalBeacons) {
-        events.emit("mission:complete");
-        events.emit("log:message", "ALL BEACONS LOCATED — SIGNAL RESTORED", "success");
-      }
+      // Act progression (and the eventual mission:complete) is owned by the
+      // MissionManager, which listens for beacon:collected.
     }
   }
 }
