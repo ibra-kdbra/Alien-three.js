@@ -3,6 +3,8 @@ import { queries } from "../World";
 import { events } from "../../utils/EventBus";
 import { renderer } from "../../core/Renderer";
 import { missionState } from "../../managers/MissionManager";
+import { spawnWave, aliveCreatureCount } from "./CreatureSystem";
+import { audioManager } from "../../managers/AudioManager";
 
 let totalBeacons = 3;
 let collectedCount = 0;
@@ -11,6 +13,9 @@ let signalStrength = 0;
 // Non-objective relays idle at a fraction of full brightness; the current
 // target burns at full so the horizon always tells you where to go next.
 const IDLE_DIM = 0.22;
+
+// Arena escalation: storm-spawn per relay boot, in mission order.
+const WAVE_SIZES = [3, 5, 8];
 
 export function updateBeaconSystem(delta: number, elapsed: number) {
   if (queries.player.entities.length === 0) return;
@@ -62,10 +67,31 @@ export function updateBeaconSystem(delta: number, elapsed: number) {
       ud.beamCore.material.opacity = (0.32 + Math.sin(t * 1.5) * 0.1) * dim;
     }
 
-    // --- Proximity collection (only the current objective node powers on) ---
+    // --- Arena flow (only the current objective node powers on) ---
+    // Walking up to the node starts its boot sequence, which vents a wave of
+    // storm-spawn; the node comes online when the wave is dead. Without the
+    // cutter (rushing past the cache) the node boots unopposed — you skipped
+    // the fight and the oxygen that comes with it.
     const dist = playerPos.distanceTo(object3d.position);
 
-    if (isCurrent && dist < 3.5) {
+    if (isCurrent && !beacon.booting && dist < 3.5) {
+      const waveSize = WAVE_SIZES[Math.min(collectedCount, WAVE_SIZES.length - 1)];
+      if (player.playerControl?.hasCutter) {
+        beacon.booting = true;
+        spawnWave(waveSize, object3d.position);
+        events.emit(
+          "log:message",
+          "NODE BOOT SEQUENCE STARTED — HOLD THE AREA",
+          "warn",
+        );
+        audioManager.playLowOxygenWarning();
+        continue;
+      }
+      // No weapon: instant activation (grace path)
+      beacon.booting = true;
+    }
+
+    if (beacon.booting && aliveCreatureCount() === 0) {
       // Collect the beacon
       beacon.collected = true;
       collectedCount++;
