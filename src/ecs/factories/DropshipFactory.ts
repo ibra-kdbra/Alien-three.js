@@ -3,6 +3,7 @@ import { world } from "../World";
 import { renderer } from "../../core/Renderer";
 import { physicsManager } from "../../managers/PhysicsManager";
 import { getPlanetHeight } from "./PlanetFactory";
+import { hullTexture, deckTexture } from "../../utils/ProceduralTexture";
 import RAPIER from "@dimforge/rapier3d-compat";
 
 /**
@@ -17,14 +18,22 @@ export function createLandingZone(planetRadius: number) {
   const padGroup = new THREE.Group();
   padGroup.position.copy(position);
 
-  // 1. Landing Pad Cylinder Mesh
+  // 1. Landing Pad Cylinder Mesh — deck plating on top, plain rim sides
   const padGeo = new THREE.CylinderGeometry(8.0, 8.5, 0.5, 32);
-  const padMat = new THREE.MeshStandardMaterial({
-    color: 0x4a525e,
+  const deck = deckTexture();
+  const padTopMat = new THREE.MeshStandardMaterial({
+    map: deck.map,
+    bumpMap: deck.bump,
+    bumpScale: 0.02,
     roughness: 0.7,
+    metalness: 0.45,
+  });
+  const padSideMat = new THREE.MeshStandardMaterial({
+    color: 0x39404a,
+    roughness: 0.75,
     metalness: 0.5,
   });
-  const padMesh = new THREE.Mesh(padGeo, padMat);
+  const padMesh = new THREE.Mesh(padGeo, [padSideMat, padTopMat, padSideMat]);
   padMesh.receiveShadow = true;
   padMesh.castShadow = true;
   padGroup.add(padMesh);
@@ -56,12 +65,15 @@ export function createLandingZone(planetRadius: number) {
   const shipGroup = new THREE.Group();
   shipGroup.position.y = 0.25; // Sits on top of the landing pad
 
-  // Cabin
+  // Cabin — riveted hull plating
+  const hull = hullTexture();
   const cabinGeo = new THREE.BoxGeometry(3.0, 2.0, 5.0);
   const cabinMat = new THREE.MeshStandardMaterial({
-    color: 0x8d99ab,
-    roughness: 0.35,
-    metalness: 0.75,
+    map: hull.map,
+    bumpMap: hull.bump,
+    bumpScale: 0.015,
+    roughness: 0.45,
+    metalness: 0.7,
   });
   const cabin = new THREE.Mesh(cabinGeo, cabinMat);
   cabin.position.y = 1.0;
@@ -81,12 +93,15 @@ export function createLandingZone(planetRadius: number) {
   visor.castShadow = true;
   shipGroup.add(visor);
 
-  // Left & Right Wings
+  // Left & Right Wings — same plating, darker tint
   const wingGeo = new THREE.BoxGeometry(1.2, 0.6, 3.5);
   const wingMat = new THREE.MeshStandardMaterial({
-    color: 0x646f80,
-    roughness: 0.45,
-    metalness: 0.75,
+    map: hull.map,
+    bumpMap: hull.bump,
+    bumpScale: 0.015,
+    color: 0x9aa3b2,
+    roughness: 0.5,
+    metalness: 0.7,
   });
   const leftWing = new THREE.Mesh(wingGeo, wingMat);
   leftWing.position.set(-2.0, 0.8, -0.5);
@@ -160,6 +175,23 @@ export function createLandingZone(planetRadius: number) {
   const padVertices = new Float32Array(padMesh.geometry.getAttribute("position").array);
   const colliderDesc = RAPIER.ColliderDesc.trimesh(padVertices, padIndices);
   physicsManager.world.createCollider(colliderDesc, rigidBody);
+
+  // Solid hull for the ship itself — without these the player wades straight
+  // through the cabin. (Static; by the time the launch animation moves the
+  // visual ship, the player has boarded and the run is over.)
+  const shipY = 0.25; // shipGroup offset above the pad
+  physicsManager.world.createCollider(
+    RAPIER.ColliderDesc.cuboid(1.5, 1.0, 2.5).setTranslation(0, shipY + 1.0, 0),
+    rigidBody,
+  );
+  physicsManager.world.createCollider(
+    RAPIER.ColliderDesc.cuboid(0.6, 0.35, 1.9).setTranslation(-2.0, shipY + 0.8, -0.9),
+    rigidBody,
+  );
+  physicsManager.world.createCollider(
+    RAPIER.ColliderDesc.cuboid(0.6, 0.35, 1.9).setTranslation(2.0, shipY + 0.8, -0.9),
+    rigidBody,
+  );
 
   return world.add({
     name: "Dropship",
