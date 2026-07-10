@@ -1,20 +1,24 @@
 import * as THREE from "three";
 import { queries } from "../World";
 import { renderer } from "../../core/Renderer";
+import { getMissionTarget } from "../../managers/MissionManager";
 
 /**
  * Screen-space waypoint markers (DOM overlay).
  *
- * Every uncollected beacon gets a marker with live distance; once all beacons
- * are found the extraction pad gets one instead. Markers clamp to the screen
- * edge with a direction arrow when the target is off-screen or behind the
- * camera — on a spherical planet targets are usually over the horizon, so
- * this is the player's primary navigation tool.
+ * ONE marker for the current mission objective (cache → current relay node →
+ * dropship), plus small hint markers for Meridian data pads within earshot.
+ * A single target keeps the screen readable and makes each act's goal
+ * unambiguous. Markers clamp to the screen edge with a direction arrow when
+ * the target is off-screen or behind the camera — on a spherical planet
+ * targets are usually over the horizon, so this is the player's primary
+ * navigation tool.
  */
 
 interface Marker {
   root: HTMLElement;
   icon: HTMLElement;
+  label: HTMLElement;
   distLabel: HTMLElement;
 }
 
@@ -47,14 +51,9 @@ function getMarker(key: string, label: string, className: string): Marker {
   root.appendChild(distLabel);
 
   container!.appendChild(root);
-  marker = { root, icon, distLabel };
+  marker = { root, icon, label: name, distLabel };
   markers.set(key, marker);
   return marker;
-}
-
-function hideMarker(key: string) {
-  const marker = markers.get(key);
-  if (marker) marker.root.style.display = "none";
 }
 
 function placeMarker(marker: Marker, target: THREE.Vector3, playerPos: THREE.Vector3) {
@@ -62,6 +61,8 @@ function placeMarker(marker: Marker, target: THREE.Vector3, playerPos: THREE.Vec
   const w = window.innerWidth;
   const h = window.innerHeight;
   const margin = 48;
+  // Clamped markers stay below the objective panel at top-center
+  const topMargin = 120;
 
   // Is the target in front of the camera?
   _camSpace.copy(target).applyMatrix4(camera.matrixWorldInverse);
@@ -71,7 +72,7 @@ function placeMarker(marker: Marker, target: THREE.Vector3, playerPos: THREE.Vec
   let x = (_proj.x * 0.5 + 0.5) * w;
   let y = (-_proj.y * 0.5 + 0.5) * h;
 
-  let offScreen = behind || x < margin || x > w - margin || y < margin || y > h - margin;
+  let offScreen = behind || x < margin || x > w - margin || y < topMargin || y > h - margin;
 
   if (offScreen) {
     // Direction from screen center; when behind, mirror so the arrow points the right way
@@ -86,7 +87,7 @@ function placeMarker(marker: Marker, target: THREE.Vector3, playerPos: THREE.Vec
     x = w / 2 + dx * Math.min(scale, (w + h) / len);
     y = h / 2 + dy * Math.min(scale, (w + h) / len);
     x = THREE.MathUtils.clamp(x, margin, w - margin);
-    y = THREE.MathUtils.clamp(y, margin, h - margin);
+    y = THREE.MathUtils.clamp(y, topMargin, h - margin);
 
     const angle = Math.atan2(dy, dx);
     marker.icon.textContent = "➤";
@@ -102,6 +103,9 @@ function placeMarker(marker: Marker, target: THREE.Vector3, playerPos: THREE.Vec
   marker.distLabel.textContent = `${Math.round(playerPos.distanceTo(target))}m`;
 }
 
+const DATA_HINT_RADIUS = 70;
+const _touched = new Set<string>();
+
 export function updateWaypointSystem() {
   const player = queries.player.first;
   if (!player?.object3d) return;
@@ -113,30 +117,38 @@ export function updateWaypointSystem() {
 
   const playerPos = player.object3d.position;
   renderer.camera.updateMatrixWorld();
+  _touched.clear();
 
-  let remaining = 0;
-  for (const beaconEntity of queries.beacons) {
-    const key = beaconEntity.name ?? "beacon";
-    if (beaconEntity.beacon.collected) {
-      hideMarker(key);
-      continue;
-    }
-    remaining++;
-    // Anchor the marker a few meters above the beacon along the surface normal
-    _world.copy(beaconEntity.object3d.position);
-    _world.addScaledVector(_world.clone().normalize(), 4);
-    const marker = getMarker(key, "BEACON", "waypoint-beacon");
+  // The single mission objective marker
+  const target = getMissionTarget();
+  if (target) {
+    const marker = getMarker("target", target.label, target.className);
+    marker.root.className = `waypoint ${target.className}`;
+    marker.label.textContent = target.label;
+    // Anchor a few meters above the target along the surface normal so the
+    // marker peeks over terrain instead of burying itself in it
+    _world.copy(target.position);
+    _world.addScaledVector(_world.clone().normalize(), target.className === "waypoint-extract" ? 6 : 4);
     placeMarker(marker, _world, playerPos);
+    _touched.add("target");
   }
 
-  // Extraction marker once all beacons are collected
-  const dropshipEntity = queries.dropships.first;
-  if (dropshipEntity && remaining === 0 && !dropshipEntity.dropship.activated) {
-    _world.copy(dropshipEntity.object3d.position);
-    _world.addScaledVector(_world.clone().normalize(), 6);
-    const marker = getMarker("dropship", "EXTRACT", "waypoint-extract");
+  // Hint markers for nearby uncollected data pads (optional lore)
+  for (const entity of queries.pickups) {
+    const { pickup, object3d } = entity;
+    if (pickup?.kind !== "datapad" || pickup.collected || !object3d) continue;
+    if (playerPos.distanceTo(object3d.position) > DATA_HINT_RADIUS) continue;
+
+    const key = entity.name ?? "datapad";
+    const marker = getMarker(key, "DATA", "waypoint-data");
+    _world.copy(object3d.position);
+    _world.addScaledVector(_world.clone().normalize(), 2);
     placeMarker(marker, _world, playerPos);
-  } else {
-    hideMarker("dropship");
+    _touched.add(key);
+  }
+
+  // Hide any marker not placed this frame (collected pads, act changes)
+  for (const [key, marker] of markers) {
+    if (!_touched.has(key)) marker.root.style.display = "none";
   }
 }
