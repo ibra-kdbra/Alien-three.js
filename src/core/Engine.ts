@@ -17,6 +17,7 @@ import { updatePickupSystem, updatePickupVisuals } from "../ecs/systems/PickupSy
 import { updateHazardVisuals } from "../ecs/factories/HazardFactory";
 import { updateParticleSystem } from "../ecs/systems/ParticleSystem";
 import { updateDropshipSystem } from "../ecs/systems/DropshipSystem";
+import { updateMissionSystem } from "../managers/MissionManager";
 import { inputManager } from "../managers/InputManager";
 import { debugManager } from "../managers/DebugManager";
 import { updateSun } from "./Sun";
@@ -43,6 +44,12 @@ export class Engine {
   private fixedElapsed = 0;
 
   private skybox: THREE.Mesh | null = null;
+
+  // Rolling frame-time stats for the perf probe (window.__astra.getPerf()).
+  public frameMs = 0;
+  public frameMsMax = 0;
+  private frameMsWindow = 0;
+  private frameCount = 0;
 
   constructor() {
     this.time = new Time();
@@ -75,6 +82,7 @@ export class Engine {
     updateOxygenSystem(dt);
     updatePickupSystem();
     updateDropshipSystem(dt, this.fixedElapsed);
+    updateMissionSystem(dt);
 
     // 3. Physics step + transform snapshot for render interpolation
     physicsManager.stepOnce();
@@ -116,6 +124,7 @@ export class Engine {
   private loop = () => {
     if (!this.isRunning) return;
 
+    const frameStart = performance.now();
     this.time.update();
     const delta = this.time.delta;
     const elapsed = this.time.elapsed;
@@ -134,6 +143,18 @@ export class Engine {
     this.renderUpdate(delta, alpha, elapsed);
 
     inputManager.resetMouseDelta();
+
+    // Average main-thread cost over 30-frame windows (CPU + submitted GPU work;
+    // actual GPU time is not observable from JS, but this tracks regressions).
+    const cost = performance.now() - frameStart;
+    this.frameMsWindow += cost;
+    this.frameMsMax = Math.max(this.frameMsMax, cost);
+    if (++this.frameCount >= 30) {
+      this.frameMs = this.frameMsWindow / this.frameCount;
+      this.frameMsWindow = 0;
+      this.frameCount = 0;
+      this.frameMsMax = cost;
+    }
 
     requestAnimationFrame(this.loop);
   };
