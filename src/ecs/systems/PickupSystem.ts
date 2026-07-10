@@ -32,7 +32,7 @@ export function updatePickupSystem() {
         events.emit("log:message", "MERIDIAN DATA PAD RECOVERED", "success");
       } else {
         events.emit("pickup:collected", pickup.amount);
-        events.emit("log:message", `O₂ CANISTER +${pickup.amount}%`, "info");
+        events.emit("log:message", `O₂ +${pickup.amount}%`, "info");
       }
 
       renderer.scene.remove(object3d);
