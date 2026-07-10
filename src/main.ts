@@ -4,11 +4,15 @@ import { createPlanet, getPlanetHeight } from "./ecs/factories/PlanetFactory";
 import { createBeacons, BEACON_DIRECTIONS } from "./ecs/factories/BeaconFactory";
 import { createHazards } from "./ecs/factories/HazardFactory";
 import { createLandingZone } from "./ecs/factories/DropshipFactory";
+import { createPickups, createDataPads } from "./ecs/factories/PickupFactory";
+import { createSupplyCache } from "./ecs/factories/CacheFactory";
+import { missionManager, missionState } from "./managers/MissionManager";
 import { initParticleSystem } from "./ecs/systems/ParticleSystem";
 import * as THREE from "three";
 import { renderer } from "./core/Renderer";
 import { createSun } from "./core/Sun";
 import { uiManager } from "./managers/UIManager";
+import { settingsMenu } from "./managers/SettingsMenu";
 import { assetManager } from "./managers/AssetManager";
 import { physicsManager } from "./managers/PhysicsManager";
 import { debugManager } from "./managers/DebugManager";
@@ -52,8 +56,8 @@ function createWorldClutter(planetRadius: number) {
   ];
 
   const material = new THREE.MeshStandardMaterial({
-    color: 0x554433,
-    roughness: 0.95,
+    color: 0x8a6a52,
+    roughness: 0.9,
     metalness: 0.05,
     flatShading: true,
   });
@@ -113,11 +117,80 @@ function createWorldClutter(planetRadius: number) {
     mesh.receiveShadow = true;
     renderer.scene.add(mesh);
   });
+
+  // Emissive crystal clusters — night-side landmarks and pure eye candy.
+  // Visual only: no colliders, players walk straight through.
+  const crystalGeo = new THREE.ConeGeometry(0.22, 1.4, 5);
+  const crystalMat = new THREE.MeshStandardMaterial({
+    color: 0x8844cc,
+    emissive: 0xaa55ff,
+    emissiveIntensity: 1.3,
+    roughness: 0.2,
+    metalness: 0.1,
+    flatShading: true,
+  });
+
+  const clusterCount = 22;
+  const crystalsPerCluster = 5;
+  const crystalMesh = new THREE.InstancedMesh(
+    crystalGeo,
+    crystalMat,
+    clusterCount * crystalsPerCluster,
+  );
+
+  let ci = 0;
+  for (let c = 0; c < clusterCount; c++) {
+    let dir;
+    do {
+      dir = new THREE.Vector3(
+        Math.random() - 0.5,
+        Math.random() - 0.5,
+        Math.random() - 0.5,
+      ).normalize();
+    } while (!isClearOf(dir));
+
+    const clusterUpright = new THREE.Quaternion().setFromUnitVectors(
+      new THREE.Vector3(0, 1, 0),
+      dir,
+    );
+
+    for (let k = 0; k < crystalsPerCluster; k++) {
+      // Jitter each shard around the cluster center along the surface
+      const jitter = dir
+        .clone()
+        .add(
+          new THREE.Vector3(
+            (Math.random() - 0.5) * 0.012,
+            (Math.random() - 0.5) * 0.012,
+            (Math.random() - 0.5) * 0.012,
+          ),
+        )
+        .normalize();
+      const height = getPlanetHeight(jitter, planetRadius);
+      const pos = jitter.clone().multiplyScalar(height + 0.2);
+
+      dummy.position.copy(pos);
+      dummy.quaternion.copy(clusterUpright);
+      dummy.rotateX((Math.random() - 0.5) * 0.9);
+      dummy.rotateZ((Math.random() - 0.5) * 0.9);
+      dummy.scale.set(
+        0.7 + Math.random() * 0.6,
+        0.6 + Math.random() * 1.3,
+        0.7 + Math.random() * 0.6,
+      );
+      dummy.updateMatrix();
+      crystalMesh.setMatrixAt(ci++, dummy.matrix);
+    }
+  }
+  crystalMesh.castShadow = true;
+  renderer.scene.add(crystalMesh);
 }
 
 async function bootstrap() {
   // Initialize Managers
   uiManager;
+  settingsMenu;
+  missionManager;
   debugManager;
 
   // Initialize Core Engine & Physics
@@ -128,28 +201,30 @@ async function bootstrap() {
 
   // --- Lighting Setup ---
 
-  // Hemisphere light for natural ambient bounce
+  // Hemisphere light for natural ambient bounce — strong enough that the
+  // shadow side of objects still reads as shape, never as a black cutout.
   const hemiLight = new THREE.HemisphereLight(
-    0x8899bb, // Sky color (cool blue)
-    0x443322, // Ground color (warm brown)
-    0.6,
+    0x9d8bd6, // Sky color (nebula violet)
+    0x5a3a28, // Ground color (warm rust bounce)
+    0.7,
   );
   renderer.scene.add(hemiLight);
 
   // Ambient fill
-  const ambientLight = new THREE.AmbientLight(0x222233, 0.4);
+  const ambientLight = new THREE.AmbientLight(0x353050, 0.45);
   renderer.scene.add(ambientLight);
 
   // Sun with a player-following shadow frustum
   createSun(renderer.scene);
 
   // Opposite fill light (weaker, cool-toned)
-  const fillLight = new THREE.DirectionalLight(0x6688cc, 0.5);
-  fillLight.position.set(-50, 30, -30);
+  const fillLight = new THREE.DirectionalLight(0x7799dd, 0.4);
+  fillLight.position.set(-50, -20, -30);
   renderer.scene.add(fillLight);
 
-  // Atmospheric haze tuned to the planet scale
-  renderer.scene.fog = new THREE.FogExp2(0x1a0e2e, 0.0035);
+  // Atmospheric haze — dusty mauve matched to the sky horizon so terrain
+  // dissolves into the sky instead of into gray soup.
+  renderer.scene.fog = new THREE.FogExp2(0x38203e, 0.004);
 
   // Generate Procedural Skybox
   const skyboxGeo = new THREE.SphereGeometry(4000, 48, 48);
@@ -174,6 +249,9 @@ async function bootstrap() {
   // Gameplay entities
   createBeacons(PLANET_RADIUS, getPlanetHeight);
   createHazards(PLANET_RADIUS, getPlanetHeight);
+  createPickups(PLANET_RADIUS);
+  createSupplyCache(PLANET_RADIUS);
+  createDataPads(PLANET_RADIUS);
 
   // Initialize particles
   initParticleSystem();
@@ -194,6 +272,33 @@ async function bootstrap() {
   const { charDiag } = await import("./ecs/systems/CharacterSystem");
   (window as any).__astra = {
     getDiag: () => JSON.parse(JSON.stringify(charDiag)),
+    getMission: () => ({ ...missionState, stats: missionManager.getStats() }),
+    // Test-only: fast-forward the Act III countdown.
+    setEvacRemaining(seconds: number) {
+      missionState.evacRemaining = seconds;
+    },
+    // Test-only: dropship altitude above its pad (verifies the launch anim).
+    getShipY() {
+      const d = queries.dropships.first;
+      const ship = d?.object3d?.children.find((c) => c instanceof THREE.Group);
+      return ship ? ship.position.y : null;
+    },
+    getPerf: () => ({
+      frameMs: engine.frameMs,
+      frameMsMax: engine.frameMsMax,
+      drawCalls: renderer.renderer.info.render.calls,
+      triangles: renderer.renderer.info.render.triangles,
+    }),
+    // Test-only: drop the player onto the surface point in direction (x,y,z).
+    teleport(x: number, y: number, z: number) {
+      const player = queries.player.first;
+      if (!player) return;
+      const dir = new THREE.Vector3(x, y, z).normalize();
+      const h = getPlanetHeight(dir, PLANET_RADIUS);
+      const pos = dir.multiplyScalar(h + 1.5);
+      player.rigidBody.setTranslation({ x: pos.x, y: pos.y, z: pos.z }, true);
+      player.playerControl.velocity = { x: 0, y: 0, z: 0 };
+    },
     getPlayerState() {
       const player = queries.player.first;
       if (!player) return null;
