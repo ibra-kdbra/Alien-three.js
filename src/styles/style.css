@@ -643,3 +643,304 @@ body {
   color: #ffaa44;
   text-shadow: 0 0 8px rgba(255, 170, 68, 0.4), 0 0 2px rgba(0, 0, 0, 0.8);
 }
+
+/* ======================================
+   Settings Menu (C key)
+   ====================================== */
+
+#settings-menu {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(4, 6, 10, 0.72);
+  backdrop-filter: blur(3px);
+  font-family: var(--font-mono);
+}
+
+.settings-panel {
+  width: min(440px, 90vw);
+  padding: 28px 32px;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  box-shadow: 0 0 40px rgba(0, 255, 204, 0.08), inset 0 0 24px rgba(0, 255, 204, 0.03);
+}
+
+.settings-panel h2 {
+  font-family: var(--font-display);
+  font-size: 16px;
+  letter-spacing: 0.25em;
+  color: var(--astra-cyan);
+  margin-bottom: 22px;
+  text-align: center;
+}
+
+.settings-row {
+  display: grid;
+  grid-template-columns: 140px 1fr 56px;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.settings-row label {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: rgba(210, 240, 235, 0.85);
+}
+
+.settings-value {
+  font-size: 11px;
+  color: var(--astra-cyan);
+  text-align: right;
+}
+
+.settings-row input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 3px;
+  background: rgba(0, 255, 204, 0.18);
+  outline: none;
+  cursor: pointer;
+}
+
+.settings-row input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  background: var(--astra-cyan);
+  border-radius: 50%;
+  box-shadow: 0 0 8px rgba(0, 255, 204, 0.6);
+}
+
+.settings-row input[type="range"]::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  background: var(--astra-cyan);
+  border: none;
+  border-radius: 50%;
+  box-shadow: 0 0 8px rgba(0, 255, 204, 0.6);
+}
+
+.settings-row input[type="checkbox"] {
+  justify-self: start;
+  width: 16px;
+  height: 16px;
+  accent-color: var(--astra-cyan);
+  cursor: pointer;
+}
+
+.settings-buttons {
+  display: flex;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.settings-buttons .btn-hud {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--astra-cyan);
+  background: rgba(0, 255, 204, 0.06);
+  border: 1px solid var(--astra-cyan-dim);
+  padding: 8px 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.settings-buttons .btn-hud:hover {
+  background: rgba(0, 255, 204, 0.14);
+  box-shadow: 0 0 12px rgba(0, 255, 204, 0.25);
+}
+
+/* ======================================
+   Mission: objective panel, act cards,
+   transmissions, data-pad waypoints
+   ====================================== */
+
+#objective-panel {
+  position: absolute;
+  top: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+  font-family: "Share Tech Mono", monospace;
+  pointer-events: none;
+  padding: 8px 26px;
+  background: rgba(4, 8, 12, 0.45);
+  border-top: 1px solid var(--astra-cyan-dim);
+  border-bottom: 1px solid var(--astra-cyan-dim);
+}
+
+.objective-act {
+  font-size: 9px;
+  letter-spacing: 0.4em;
+  color: var(--astra-cyan);
+  opacity: 0.7;
+}
+
+.objective-text {
+  margin-top: 3px;
+  font-family: "Orbitron", sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  color: #e8fff8;
+  text-shadow: 0 0 12px var(--astra-cyan-glow);
+}
+
+.objective-dist {
+  margin-top: 3px;
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  color: var(--astra-cyan);
+}
+
+#objective-panel.objective-evac {
+  border-top-color: rgba(255, 51, 68, 0.5);
+  border-bottom-color: rgba(255, 51, 68, 0.5);
+}
+
+#objective-panel.objective-evac .objective-act,
+#objective-panel.objective-evac .objective-dist {
+  color: var(--astra-red);
+  animation: evac-blink 1s steps(2, start) infinite;
+}
+
+@keyframes evac-blink {
+  50% { opacity: 0.45; }
+}
+
+/* --- Act title cards --- */
+
+#act-card {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.9s ease;
+  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.55) 0%, rgba(0, 0, 0, 0) 70%);
+}
+
+#act-card.visible {
+  opacity: 1;
+}
+
+#act-card .act-num {
+  font-family: "Share Tech Mono", monospace;
+  font-size: 13px;
+  letter-spacing: 0.7em;
+  color: var(--astra-cyan);
+}
+
+#act-card .act-title {
+  margin-top: 12px;
+  font-family: "Orbitron", sans-serif;
+  font-size: 42px;
+  font-weight: 900;
+  letter-spacing: 0.28em;
+  color: #f2fffb;
+  text-shadow: 0 0 24px var(--astra-cyan-glow), 0 0 60px rgba(0, 255, 204, 0.2);
+}
+
+#act-card .act-sub {
+  margin-top: 14px;
+  font-family: "Share Tech Mono", monospace;
+  font-size: 13px;
+  letter-spacing: 0.25em;
+  color: rgba(232, 255, 248, 0.75);
+}
+
+/* --- Transmissions (Meridian crew logs) --- */
+
+#transmission {
+  position: fixed;
+  left: 50%;
+  bottom: 130px;
+  transform: translateX(-50%) translateY(12px);
+  z-index: 140;
+  width: min(620px, 86vw);
+  padding: 14px 18px;
+  background: rgba(6, 10, 14, 0.82);
+  border-left: 3px solid var(--astra-orange);
+  font-family: "Share Tech Mono", monospace;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+
+#transmission.visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+#transmission .tx-header {
+  font-size: 10px;
+  letter-spacing: 0.3em;
+  color: var(--astra-orange);
+  margin-bottom: 7px;
+}
+
+#transmission .tx-body {
+  font-size: 13px;
+  line-height: 1.55;
+  color: #ffe9cf;
+}
+
+/* --- New waypoint flavors --- */
+
+.waypoint-cache {
+  color: var(--astra-orange);
+  text-shadow: 0 0 8px rgba(255, 170, 68, 0.4), 0 0 2px rgba(0, 0, 0, 0.8);
+}
+
+.waypoint-data {
+  color: var(--astra-purple);
+  text-shadow: 0 0 8px rgba(170, 102, 255, 0.4), 0 0 2px rgba(0, 0, 0, 0.8);
+  opacity: 0.85;
+}
+
+.waypoint-data .waypoint-icon {
+  font-size: 13px;
+}
+
+/* --- Win screen stats --- */
+
+.mission-stats {
+  margin: 26px auto 0;
+  width: min(360px, 80vw);
+  font-family: "Share Tech Mono", monospace;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  color: var(--astra-cyan);
+}
+
+.mission-stats div {
+  display: flex;
+  justify-content: space-between;
+  padding: 5px 2px;
+  border-bottom: 1px solid rgba(0, 255, 204, 0.15);
+}
+
+.mission-stats div span:last-child {
+  color: #e8fff8;
+}
+
+.mission-epitaph {
+  margin-top: 20px;
+  font-family: "Share Tech Mono", monospace;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: rgba(232, 255, 248, 0.6);
+  font-style: italic;
+}
