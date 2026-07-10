@@ -97,8 +97,8 @@ export class UIManager {
       events.emit("log:message", "SUIT SYSTEMS ONLINE", "info");
     }, 500);
     setTimeout(() => {
-      events.emit("log:message", "3 BEACONS DETECTED — LOCATE AND ACTIVATE", "warn");
-    }, 1500);
+      events.emit("log:message", "MERIDIAN RELAY NETWORK DETECTED — 3 NODES, ALL DARK", "warn");
+    }, 1400);
   }
 
   private startLoadingTextRotation() {
@@ -221,14 +221,19 @@ export class UIManager {
       }, 1500);
     });
 
-    // 7. Mission complete
+    // 7. Mission complete — hold long enough to watch the dropship lift off,
+    // then fade the debrief in over it.
     events.on("mission:complete", () => {
       setTimeout(() => {
         if (this.missionCompleteScreen) {
+          this.missionCompleteScreen.style.opacity = "0";
+          this.missionCompleteScreen.style.transition = "opacity 2.5s ease";
           this.missionCompleteScreen.style.display = "flex";
+          void this.missionCompleteScreen.offsetHeight; // flush so the fade actually runs
+          this.missionCompleteScreen.style.opacity = "1";
         }
         document.exitPointerLock();
-      }, 2000);
+      }, 6500);
     });
 
     // 8. Pointer Lock UI
