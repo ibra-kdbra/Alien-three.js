@@ -1,9 +1,12 @@
 import * as THREE from "three";
 import { renderer } from "../../core/Renderer";
 import { queries } from "../World";
+import { events } from "../../utils/EventBus";
+import type { AstronautRig } from "../factories/AstronautFactory";
 
 /**
- * Particle system managing ambient dust motes and jetpack thruster trails.
+ * Particle system managing ambient dust motes, jetpack thruster trails and
+ * ground dust bursts (landings, footsteps).
  */
 
 // Ambient floating dust motes
@@ -21,6 +24,59 @@ let jetpackVelocities: Float32Array;
 let jetpackLifetimes: Float32Array;
 const JETPACK_COUNT = 200;
 let jetpackIndex = 0;
+
+// Ground dust bursts (landing thumps, sprint footfalls)
+let burstParticles: THREE.Points | null = null;
+let burstPositions: Float32Array;
+let burstVelocities: Float32Array;
+let burstLifetimes: Float32Array;
+const BURST_COUNT = 180;
+let burstIndex = 0;
+
+const _bNormal = new THREE.Vector3();
+const _bFeet = new THREE.Vector3();
+const _bTangentA = new THREE.Vector3();
+const _bTangentB = new THREE.Vector3();
+
+/** Kick a ring of dust out from the player's feet along the surface. */
+function spawnGroundBurst(count: number, speed: number) {
+  if (!burstParticles) return;
+  const player = queries.player.first;
+  if (!player) return;
+
+  _bNormal.copy(player.object3d.position).normalize();
+  _bFeet.copy(player.object3d.position).addScaledVector(_bNormal, -0.75);
+
+  // Tangent basis on the sphere surface
+  _bTangentA.set(0, 0, 1).cross(_bNormal);
+  if (_bTangentA.lengthSq() < 0.01) _bTangentA.set(1, 0, 0).cross(_bNormal);
+  _bTangentA.normalize();
+  _bTangentB.crossVectors(_bNormal, _bTangentA);
+
+  for (let i = 0; i < count; i++) {
+    const idx = burstIndex;
+    burstIndex = (burstIndex + 1) % BURST_COUNT;
+
+    const angle = Math.random() * Math.PI * 2;
+    const outSpeed = speed * (0.4 + Math.random() * 0.6);
+
+    burstPositions[idx * 3] = _bFeet.x;
+    burstPositions[idx * 3 + 1] = _bFeet.y;
+    burstPositions[idx * 3 + 2] = _bFeet.z;
+
+    burstVelocities[idx * 3] =
+      (_bTangentA.x * Math.cos(angle) + _bTangentB.x * Math.sin(angle)) * outSpeed +
+      _bNormal.x * outSpeed * 0.5;
+    burstVelocities[idx * 3 + 1] =
+      (_bTangentA.y * Math.cos(angle) + _bTangentB.y * Math.sin(angle)) * outSpeed +
+      _bNormal.y * outSpeed * 0.5;
+    burstVelocities[idx * 3 + 2] =
+      (_bTangentA.z * Math.cos(angle) + _bTangentB.z * Math.sin(angle)) * outSpeed +
+      _bNormal.z * outSpeed * 0.5;
+
+    burstLifetimes[idx] = 0.7 + Math.random() * 0.3;
+  }
+}
 
 export function initParticleSystem() {
   // 1. Ambient floating dust setup
@@ -97,8 +153,8 @@ export function initParticleSystem() {
 
   const jetpackMaterial = new THREE.ShaderMaterial({
     uniforms: {
-      uStartColor: { value: new THREE.Color(0x00ffcc) }, // Bright cyan engine glow
-      uEndColor: { value: new THREE.Color(0xff4411) },   // Warm orange/red smoke
+      uStartColor: { value: new THREE.Color(0x88ddff) }, // hot blue-white core
+      uEndColor: { value: new THREE.Color(0xff6622) },   // cooling ember
     },
     vertexShader: `
       attribute float lifetime;
@@ -106,8 +162,8 @@ export function initParticleSystem() {
       void main() {
         vLifetime = lifetime;
         vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-        // Particles shrink as they decay
-        gl_PointSize = max(1.0, (15.0 * lifetime) * (180.0 / -mvPosition.z));
+        // Small, tight exhaust — oversized points wash out the whole screen
+        gl_PointSize = clamp((7.0 * lifetime) * (180.0 / -mvPosition.z), 1.0, 42.0);
         gl_Position = projectionMatrix * mvPosition;
       }
     `,
@@ -120,10 +176,10 @@ export function initParticleSystem() {
         float dist = length(gl_PointCoord - vec2(0.5));
         if (dist > 0.5) discard;
         float fade = smoothstep(0.5, 0.0, dist);
-        
+
         // Color transition based on lifetime
         vec3 color = mix(uEndColor, uStartColor, vLifetime);
-        gl_FragColor = vec4(color, vLifetime * fade * 0.8);
+        gl_FragColor = vec4(color, vLifetime * fade * 0.55);
       }
     `,
     transparent: true,
@@ -134,6 +190,63 @@ export function initParticleSystem() {
   jetpackParticles = new THREE.Points(jetpackGeometry, jetpackMaterial);
   jetpackParticles.frustumCulled = false;
   renderer.scene.add(jetpackParticles);
+
+  // 3. Ground dust burst pool
+  const burstGeometry = new THREE.BufferGeometry();
+  burstPositions = new Float32Array(BURST_COUNT * 3);
+  burstVelocities = new Float32Array(BURST_COUNT * 3);
+  burstLifetimes = new Float32Array(BURST_COUNT);
+
+  burstGeometry.setAttribute("position", new THREE.BufferAttribute(burstPositions, 3));
+  burstGeometry.setAttribute("lifetime", new THREE.BufferAttribute(burstLifetimes, 1));
+
+  const burstMaterial = new THREE.ShaderMaterial({
+    uniforms: {
+      uColor: { value: new THREE.Color(0xb08560) }, // kicked-up regolith
+    },
+    vertexShader: `
+      attribute float lifetime;
+      varying float vLifetime;
+      void main() {
+        vLifetime = lifetime;
+        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+        gl_PointSize = clamp((9.0 * lifetime) * (120.0 / -mvPosition.z), 1.0, 32.0);
+        gl_Position = projectionMatrix * mvPosition;
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 uColor;
+      varying float vLifetime;
+      void main() {
+        if (vLifetime <= 0.0) discard;
+        float dist = length(gl_PointCoord - vec2(0.5));
+        if (dist > 0.5) discard;
+        float fade = smoothstep(0.5, 0.0, dist);
+        gl_FragColor = vec4(uColor, vLifetime * fade * 0.5);
+      }
+    `,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.NormalBlending, // opaque dust, not glow
+  });
+
+  burstParticles = new THREE.Points(burstGeometry, burstMaterial);
+  burstParticles.frustumCulled = false;
+  renderer.scene.add(burstParticles);
+
+  // Feel events → dust
+  events.on("player:land", (impactSpeed) => {
+    spawnGroundBurst(
+      Math.min(40, Math.round(impactSpeed * 2.5)),
+      Math.min(6, 1.5 + impactSpeed * 0.25),
+    );
+  });
+  events.on("player:footstep", () => {
+    const player = queries.player.first;
+    // Only sprinting kicks visible dust — walking stays clean
+    if (player?.playerControl?.isSprinting) spawnGroundBurst(3, 1.2);
+  });
+  events.on("player:jump", () => spawnGroundBurst(8, 2.0));
 }
 
 export function updateParticleSystem(delta: number, elapsed: number) {
@@ -185,7 +298,7 @@ export function updateParticleSystem(delta: number, elapsed: number) {
     // Age and move existing particles
     for (let i = 0; i < JETPACK_COUNT; i++) {
       if (jetpackLifetimes[i] > 0) {
-        jetpackLifetimes[i] -= 2.2 * delta; // Decay lifetime
+        jetpackLifetimes[i] -= 3.0 * delta; // Decay lifetime
         if (jetpackLifetimes[i] < 0) jetpackLifetimes[i] = 0;
 
         jetpackPositions[i * 3] += jetpackVelocities[i * 3] * delta;
@@ -203,9 +316,15 @@ export function updateParticleSystem(delta: number, elapsed: number) {
       const velocity = playerEntity.playerControl.velocity;
       const velVec = new THREE.Vector3(velocity.x, velocity.y, velocity.z);
 
-      // Locate dual backpack nozzles in world space
-      const leftNozzle = new THREE.Vector3(-0.08, 0.4, -0.06).applyMatrix4(playerObj.matrixWorld);
-      const rightNozzle = new THREE.Vector3(0.08, 0.4, -0.06).applyMatrix4(playerObj.matrixWorld);
+      // Anchor exhaust to the rig's actual backpack nozzles so the trail
+      // stays glued to the suit through every pose
+      const rig = playerObj.userData.rig as AstronautRig | undefined;
+      const leftNozzle = rig
+        ? rig.nozzleL.getWorldPosition(new THREE.Vector3())
+        : new THREE.Vector3(-0.1, 0.1, 0.3).applyMatrix4(playerObj.matrixWorld);
+      const rightNozzle = rig
+        ? rig.nozzleR.getWorldPosition(new THREE.Vector3())
+        : new THREE.Vector3(0.1, 0.1, 0.3).applyMatrix4(playerObj.matrixWorld);
 
       for (let t = 0; t < 2; t++) {
         const pos = t === 0 ? leftNozzle : rightNozzle;
@@ -235,5 +354,29 @@ export function updateParticleSystem(delta: number, elapsed: number) {
 
     jetPosAttr.needsUpdate = true;
     jetLifeAttr.needsUpdate = true;
+  }
+
+  // --- 3. Update ground dust bursts ---
+  if (burstParticles) {
+    const posAttr = burstParticles.geometry.getAttribute("position") as THREE.BufferAttribute;
+    const lifeAttr = burstParticles.geometry.getAttribute("lifetime") as THREE.BufferAttribute;
+
+    const drag = Math.exp(-3.0 * delta);
+    for (let i = 0; i < BURST_COUNT; i++) {
+      if (burstLifetimes[i] > 0) {
+        burstLifetimes[i] = Math.max(0, burstLifetimes[i] - 1.6 * delta);
+
+        burstVelocities[i * 3] *= drag;
+        burstVelocities[i * 3 + 1] *= drag;
+        burstVelocities[i * 3 + 2] *= drag;
+
+        burstPositions[i * 3] += burstVelocities[i * 3] * delta;
+        burstPositions[i * 3 + 1] += burstVelocities[i * 3 + 1] * delta;
+        burstPositions[i * 3 + 2] += burstVelocities[i * 3 + 2] * delta;
+      }
+    }
+
+    posAttr.needsUpdate = true;
+    lifeAttr.needsUpdate = true;
   }
 }
